@@ -12,98 +12,151 @@
 </head>
 <body class="bg-gray-50 text-gray-900 font-sans leading-relaxed">
 
-    <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col p-4">
-        <header class="mb-8 pt-4">
-            <h1 class="text-2xl font-bold text-gray-800">PowerPricing</h1>
-            <p class="text-sm text-gray-500">ConEd Volumetric vs. Select Pricing (2026)</p>
-        </header>
+<div id="app" class="max-w-md mx-auto min-h-screen flex flex-col p-4">
+    <header class="mb-6 pt-4">
+        <h1 class="text-2xl font-bold text-gray-800">PowerPricing</h1>
+        <p class="text-sm text-gray-500">ConEd 2026 Bill Estimator</p>
+    </header>
 
-        <main class="space-y-6 flex-grow">
-            <section class="card">
-                <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4">Monthly Usage</h2>
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium mb-1">Total Energy (kWh)</label>
-                        <input type="number" id="kwhInput" value="800" class="w-full p-2 border rounded-md" placeholder="e.g. 800">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1">Peak Demand (kW)</label>
-                        <input type="number" id="kwInput" value="4.5" step="0.1" class="w-full p-2 border rounded-md" placeholder="e.g. 4.5">
-                    </div>
+    <main class="space-y-6 flex-grow">
+        <section class="card">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-4">Usage Profile</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="col-span-2">
+                    <label class="block text-xs font-medium mb-1">Total Energy (kWh)</label>
+                    <input type="number" id="totalKwh" value="6547" class="w-full p-2 bg-gray-50 border rounded-md font-mono">
                 </div>
-            </section>
+                <div>
+                    <label class="block text-xs font-medium mb-1">On-Peak kWh</label>
+                    <input type="number" id="onPeakKwh" value="1344" class="w-full p-2 bg-gray-50 border rounded-md font-mono">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1">Off-Peak kWh</label>
+                    <input type="number" id="offPeakKwh" value="5203" class="w-full p-2 bg-gray-50 border rounded-md font-mono">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1">Peak Demand (kW)</label>
+                    <input type="number" id="peakKw" value="15.77" step="0.01" class="w-full p-2 bg-gray-50 border rounded-md font-mono">
+                </div>
+            </div>
+        </section>
 
-            <section id="results" class="card bg-blue-50 border-blue-100">
-                <h2 class="text-sm font-semibold uppercase tracking-wider text-blue-600 mb-2">Estimated Savings</h2>
-                <div id="savingsOutput" class="text-4xl font-bold text-blue-700 mb-1">--</div>
-                <p id="comparisonText" class="text-sm text-blue-600">Enter data to see comparison</p>
-            </section>
-        </main>
+        <section class="card overflow-hidden !p-0">
+            <table class="w-full text-left border-collapse">
+                <thead class="bg-gray-50 border-b">
+                    <tr>
+                        <th class="p-3 text-xs font-bold text-gray-500 uppercase">Plan</th>
+                        <th class="p-3 text-xs font-bold text-gray-500 uppercase text-right">Est. Bill</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    <tr id="standardRow">
+                        <td class="p-3">
+                            <div class="font-semibold text-gray-700">Standard Volumetric</div>
+                            <div class="text-[10px] text-gray-400">Total volume delivery</div>
+                        </td>
+                        <td id="standardTotal" class="p-3 text-right font-mono font-bold text-gray-600">--</td>
+                    </tr>
+                    <tr id="selectRow" class="bg-blue-50/50">
+                        <td class="p-3">
+                            <div class="font-semibold text-blue-700">Select Pricing</div>
+                            <div class="text-[10px] text-blue-500">Demand charge + Low kWh</div>
+                        </td>
+                        <td id="selectTotal" class="p-3 text-right font-mono font-bold text-blue-700">--</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
 
-        <footer class="text-center py-6 text-xs text-gray-400">
-            All processing happens locally. Created for Park Slope Heat Pump Users.
-        </footer>
-    </div>
+        <section id="savingsCard" class="card bg-green-50 border-green-100 text-center">
+            <h2 class="text-xs font-bold uppercase text-green-600 mb-1">Estimated Monthly Savings</h2>
+            <div id="savingsAmount" class="text-4xl font-black text-green-700">--</div>
+            <p id="savingsPercent" class="text-sm font-medium text-green-600 mt-1">--</p>
+        </section>
+    </main>
 
-    <script type="module">
-        /**
-         * @typedef {Object} BillComparison
-         * @property {number} standardTotal
-         * @property {number} selectTotal
-         * @property {number} savings
-         */
+    <footer class="py-6 text-center">
+        <button id="testBtn" class="text-[10px] text-gray-300 hover:text-gray-500">Run Validation Tests</button>
+    </footer>
+</div>
 
-        /** * 2026 ConEd Rate Constants (Projected NYC Zone J)
-         * @const 
-         */
-        const RATES = {
-            STANDARD_KWH: 0.165, // Volumetric supply + delivery
-            SELECT_KWH: 0.082,   // Much lower energy rate
-            SELECT_DEMAND: 18.75 // Charge per peak kW
-        };
+<script type="module">
+    /** * Constants Derived from actual Dec 2025 bill & 2026 Projections 
+     * @const 
+     */
+    const CONST = {
+        SC1_STD_FIXED: 20.00,
+        SC1_SEL_FIXED: 30.28,
+        SBC_RATE: 0.00472,      // System Benefits Charge
+        GRT_RATE: 0.025,        // Gross Receipts Tax (est)
+        SALES_TAX: 0.045,       // NYC Sales Tax
+        
+        // Delivery
+        STD_DELIVERY_KWH: 0.1669, 
+        SEL_DELIVERY_KWH: 0.0098,
+        SEL_DEMAND_KW: 19.50,   // Winter Peak Demand rate
 
-        /**
-         * Calculates bill comparison based on usage data.
-         * @param {number} kwh - Monthly energy usage in kilowatt-hours.
-         * @param {number} peakKw - Maximum demand in kilowatts.
-         * @returns {BillComparison}
-         */
-        function calculateBills(kwh, peakKw) {
-            const standardTotal = kwh * RATES.STANDARD_KWH;
-            const selectTotal = (kwh * RATES.SELECT_KWH) + (peakKw * RATES.SELECT_DEMAND);
-            
-            return {
-                standardTotal,
-                selectTotal,
-                savings: standardTotal - selectTotal
-            };
+        // Supply (Estimated 2026 Winter Market Rates)
+        SUPPLY_STD: 0.145,
+        SUPPLY_SEL_ON: 0.185,
+        SUPPLY_SEL_OFF: 0.112
+    };
+
+    const state = new Proxy({
+        totalKwh: 6547,
+        onPeakKwh: 1344,
+        offPeakKwh: 5203,
+        peakKw: 15.77
+    }, {
+        set(target, prop, value) {
+            target[prop] = parseFloat(value) || 0;
+            render();
+            return true;
         }
+    });
 
-        function updateUI() {
-            const kwh = parseFloat(document.getElementById('kwhInput').value) || 0;
-            const kw = parseFloat(document.getElementById('kwInput').value) || 0;
-            
-            const { standardTotal, selectTotal, savings } = calculateBills(kwh, kw);
-            const savingsPercent = ((savings / standardTotal) * 100).toFixed(1);
+    function calculate() {
+        // 1. Standard Bill Calculation
+        const stdBase = CONST.SC1_STD_FIXED + 
+                        (state.totalKwh * (CONST.STD_DELIVERY_KWH + CONST.SUPPLY_STD + CONST.SBC_RATE));
+        const stdTotal = stdBase * (1 + CONST.GRT_RATE) * (1 + CONST.SALES_TAX);
 
-            document.getElementById('savingsOutput').textContent = `$${savings.toFixed(2)}`;
-            document.getElementById('comparisonText').textContent = 
-                `Saving ${savingsPercent}% vs Volumetric ($${standardTotal.toFixed(2)})`;
-        }
+        // 2. Select Bill Calculation
+        const selDelivery = CONST.SC1_SEL_FIXED + 
+                            (state.totalKwh * (CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE)) +
+                            (state.peakKw * CONST.SEL_DEMAND_KW);
+        const selSupply = (state.onPeakKwh * CONST.SUPPLY_SEL_ON) + 
+                          (state.offPeakKwh * CONST.SUPPLY_SEL_OFF);
+        const selTotal = (selDelivery + selSupply) * (1 + CONST.GRT_RATE) * (1 + CONST.SALES_TAX);
 
-        // Initialization
-        document.querySelectorAll('input').forEach(el => el.addEventListener('input', updateUI));
-        updateUI();
+        return { stdTotal, selTotal, savings: stdTotal - selTotal };
+    }
 
-        // --- SHADOW TEST RUNNER ---
-        if (new URLSearchParams(window.location.search).get('test') === 'true') {
-            console.group('🛠 Shadow Tests');
-            const testResult = calculateBills(1000, 5);
-            console.assert(testResult.standardTotal === 165, 'Standard bill calc failed');
-            // (1000 * 0.082) + (5 * 18.75) = 82 + 93.75 = 175.75
-            console.assert(testResult.selectTotal === 175.75, 'Select bill calc failed');
-            console.groupEnd();
-        }
-    </script>
+    function render() {
+        const { stdTotal, selTotal, savings } = calculate();
+        
+        document.getElementById('standardTotal').textContent = `$${stdTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        document.getElementById('selectTotal').textContent = `$${selTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        document.getElementById('savingsAmount').textContent = `$${Math.abs(savings).toFixed(2)}`;
+        document.getElementById('savingsPercent').textContent = `${((savings/stdTotal)*100).toFixed(1)}% cheaper than Standard`;
+    }
+
+    // Bind inputs
+    ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw'].forEach(id => {
+        const el = document.getElementById(id);
+        el.addEventListener('input', (e) => state[id] = e.target.value);
+    });
+
+    // Run tests (validation against user's $1,490 bill)
+    document.getElementById('testBtn').onclick = () => {
+        const results = calculate();
+        console.assert(Math.abs(results.selTotal - 1490.34) < 50, `Select bill ($${results.selTotal.toFixed(2)}) is too far from target $1490.34`);
+        console.assert(Math.abs(results.stdTotal - 2213.66) < 100, `Std bill ($${results.stdTotal.toFixed(2)}) is too far from target $2213.66`);
+        alert("Validation complete. Check console for details.");
+    };
+
+    render();
+</script>
+
 </body>
 </html>
