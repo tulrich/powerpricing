@@ -97,105 +97,136 @@
         </footer>
     </div>
 
-    <script type="module">
-        /**
-         * @typedef {Object} BillDetails
-         * @property {number} delivery - Total delivery cost including fixed fees and SBC.
-         * @property {number} supply - Total supply cost based on market rates.
-         * @property {number} total - Final bill including taxes.
-         * @property {number} effectiveRate - $/kWh for the entire bill.
-         */
+<script type="module">
+    // Seasonal weights derived from 2025 Emporia Vue data
+    const SEASON_WEIGHTS = [0.144, 0.124, 0.076, 0.048, 0.030, 0.041, 0.054, 0.038, 0.033, 0.050, 0.094, 0.171];
+    
+    const CONST = {
+        SC1_STD_FIXED: 20.00, SC1_SEL_FIXED: 30.28, SBC_RATE: 0.0051, TAX_MULT: 1.071,
+        STD_DELIVERY_KWH: 0.165, SEL_DELIVERY_KWH: 0.0098,
+        WINTER_DEMAND: 20.25, SUMMER_DEMAND: 26.50, // June-Sept
+        SUPPLY_STD: 0.1415, SUPPLY_SEL_ON: 0.205, SUPPLY_SEL_OFF: 0.125
+    };
 
-        const CONST = {
-            SC1_STD_FIXED: 20.00,
-            SC1_SEL_FIXED: 30.28,
-            SBC_RATE: 0.0051,
-            TAX_MULT: 1.071, // Combined GRT (2.5%) and Sales Tax (4.5%)
-            STD_DELIVERY_KWH: 0.165, 
-            SEL_DELIVERY_KWH: 0.0098,
-            SEL_DEMAND_KW: 20.25,
-            SUPPLY_STD: 0.1415,
-            SUPPLY_SEL_ON: 0.205,
-            SUPPLY_SEL_OFF: 0.125
-        };
-
-        const state = new Proxy({
-            totalKwh: 6547,
-            onPeakKwh: 1344,
-            offPeakKwh: 5203,
-            peakKw: 15.77
-        }, {
-            set(target, prop, value) {
-                const numVal = parseFloat(value) || 0;
-                target[prop] = numVal;
-                
-                // If totalKwh changes, update peak estimates (approx 20% on-peak)
-                if (prop === 'totalKwh') {
-                    target.onPeakKwh = Math.round(numVal * 0.205);
-                    target.offPeakKwh = numVal - target.onPeakKwh;
-                    document.getElementById('onPeakKwh').value = target.onPeakKwh;
-                    document.getElementById('offPeakKwh').value = target.offPeakKwh;
-                }
-                render();
-                return true;
+    const state = new Proxy({
+        totalKwh: 6547, onPeakKwh: 1344, offPeakKwh: 5203, peakKw: 15.77, billMonth: 0
+    }, {
+        set(target, prop, value) {
+            target[prop] = parseFloat(value);
+            if (prop === 'totalKwh') {
+                target.onPeakKwh = Math.round(target.totalKwh * 0.205);
+                target.offPeakKwh = target.totalKwh - target.onPeakKwh;
+                document.getElementById('onPeakKwh').value = target.onPeakKwh;
+                document.getElementById('offPeakKwh').value = target.offPeakKwh;
             }
+            syncToUrl();
+            render();
+            return true;
+        }
+    });
+
+    /** @returns {{stdTotal: number, selTotal: number, stdDel: number, stdSup: number, selDel: number, selSup: number}} */
+    function calculate(usage, monthIdx) {
+        const isSummer = monthIdx >= 5 && monthIdx <= 8;
+        const demandRate = isSummer ? CONST.SUMMER_DEMAND : CONST.WINTER_DEMAND;
+        
+        const stdDel = CONST.SC1_STD_FIXED + (usage.totalKwh * (CONST.STD_DELIVERY_KWH + CONST.SBC_RATE));
+        const stdSup = usage.totalKwh * CONST.SUPPLY_STD;
+        const stdTotal = (stdDel + stdSup) * CONST.TAX_MULT;
+
+        const selDel = CONST.SC1_SEL_FIXED + (usage.totalKwh * (CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE)) + (usage.peakKw * demandRate);
+        const selSup = (usage.onPeakKwh * CONST.SUPPLY_SEL_ON) + (usage.offPeakKwh * CONST.SUPPLY_SEL_OFF);
+        const selTotal = (selDel + selSup) * CONST.TAX_MULT;
+
+        return { stdTotal, selTotal, stdDel, stdSup, selDel, selSup };
+    }
+
+    function render() {
+        const cur = calculate(state, state.billMonth);
+        const savings = cur.stdTotal - cur.selTotal;
+        const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        
+        // Update Table
+        document.getElementById('stdDel').textContent = fmt(cur.stdDel);
+        document.getElementById('stdSup').textContent = fmt(cur.stdSup);
+        document.getElementById('stdTotal').textContent = fmt(cur.stdTotal);
+        document.getElementById('stdEff').textContent = `$${(cur.stdTotal / (state.totalKwh || 1)).toFixed(3)}`;
+
+        document.getElementById('selDel').textContent = fmt(cur.selDel);
+        document.getElementById('selSup').textContent = fmt(cur.selSup);
+        document.getElementById('selTotal').textContent = fmt(cur.selTotal);
+        document.getElementById('selEff').textContent = `$${(cur.selTotal / (state.totalKwh || 1)).toFixed(3)}`;
+
+        document.getElementById('savingsAmount').textContent = fmt(Math.abs(savings));
+        document.getElementById('savingsPercent').textContent = `${((savings/cur.stdTotal)*100).toFixed(1)}% savings vs Standard`;
+
+        // Yearly Projection
+        let yearStd = 0, yearSel = 0;
+        const baseWeight = SEASON_WEIGHTS[state.billMonth];
+        SEASON_WEIGHTS.forEach((weight, i) => {
+            const ratio = weight / baseWeight;
+            const est = calculate({
+                totalKwh: state.totalKwh * ratio,
+                onPeakKwh: state.onPeakKwh * ratio,
+                offPeakKwh: state.offPeakKwh * ratio,
+                peakKw: state.peakKw * Math.sqrt(ratio)
+            }, i);
+            yearStd += est.stdTotal;
+            yearSel += est.selTotal;
         });
 
-        /** @returns {{std: BillDetails, sel: BillDetails}} */
-        function calculate() {
-            const getDetails = (delivery, supply, kwh) => {
-                const total = (delivery + supply) * CONST.TAX_MULT;
-                return { delivery, supply, total, effectiveRate: total / (kwh || 1) };
-            };
+        document.getElementById('yearlyStd').textContent = `$${yearStd.toLocaleString(undefined, {maximumFractionDigits:0})}`;
+        document.getElementById('yearlySel').textContent = `$${yearSel.toLocaleString(undefined, {maximumFractionDigits:0})} / year`;
+        document.getElementById('yearlySavings').textContent = `-$${(yearStd - yearSel).toLocaleString(undefined, {maximumFractionDigits:0})} SAVED`;
+    }
 
-            const stdDel = CONST.SC1_STD_FIXED + (state.totalKwh * (CONST.STD_DELIVERY_KWH + CONST.SBC_RATE));
-            const stdSup = state.totalKwh * CONST.SUPPLY_STD;
+    function syncToUrl() {
+        const params = new URLSearchParams(state);
+        window.history.replaceState(null, '', '#' + params.toString());
+    }
 
-            const selDel = CONST.SC1_SEL_FIXED + 
-                           (state.totalKwh * (CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE)) +
-                           (state.peakKw * CONST.SEL_DEMAND_KW);
-            const selSup = (state.onPeakKwh * CONST.SUPPLY_SEL_ON) + 
-                           (state.offPeakKwh * CONST.SUPPLY_SEL_OFF);
+    // Shadow Test Runner
+    function runTests() {
+        console.group('🛠 Shadow Validation Tests');
+        
+        // Test 1: Dec 2025 Bill Validation (State: 6547kWh, 15.77kW)
+        const dec = calculate(state, 0);
+        const decPass = Math.abs(dec.selTotal - 1490.34) < 1.0;
+        console.assert(decPass, `Dec Bill Calculation Failure: $${dec.selTotal.toFixed(2)}`);
 
-            return {
-                std: getDetails(stdDel, stdSup, state.totalKwh),
-                sel: getDetails(selDel, selSup, state.totalKwh)
-            };
-        }
-
-        function render() {
-            const { std, sel } = calculate();
-            const savings = std.total - sel.total;
-            
-            const fmt = (val) => `$${val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            
-            document.getElementById('stdDel').textContent = fmt(std.delivery);
-            document.getElementById('stdSup').textContent = fmt(std.supply);
-            document.getElementById('stdTotal').textContent = fmt(std.total);
-            document.getElementById('stdEff').textContent = `$${std.effectiveRate.toFixed(3)}`;
-
-            document.getElementById('selDel').textContent = fmt(sel.delivery);
-            document.getElementById('selSup').textContent = fmt(sel.supply);
-            document.getElementById('selTotal').textContent = fmt(sel.total);
-            document.getElementById('selEff').textContent = `$${sel.effectiveRate.toFixed(3)}`;
-
-            document.getElementById('savingsAmount').textContent = fmt(Math.abs(savings));
-            document.getElementById('savingsPercent').textContent = `${((savings/std.total)*100).toFixed(1)}% savings vs Standard`;
-        }
-
-        ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw'].forEach(id => {
-            document.getElementById(id).addEventListener('input', (e) => state[id] = e.target.value);
+        // Test 2: Annual Estimate Validation (Target: ~$7,713 vs ~$12,884)
+        let annualStd = 0, annualSel = 0;
+        SEASON_WEIGHTS.forEach((w, i) => {
+            const r = w / SEASON_WEIGHTS[0];
+            const est = calculate({ totalKwh: 6547*r, onPeakKwh: 1344*r, offPeakKwh: 5203*r, peakKw: 15.77*Math.sqrt(r) }, i);
+            annualStd += est.stdTotal;
+            annualSel += est.selTotal;
         });
+        const annualPass = Math.abs(annualSel - 7713) < 200 && Math.abs(annualStd - 12884) < 300;
+        console.assert(annualPass, `Annual Projection Failure: Std $${annualStd.toFixed(0)}, Sel $${annualSel.toFixed(0)}`);
 
-        document.getElementById('testBtn').onclick = () => {
-            const { std, sel } = calculate();
-            const selPass = Math.abs(sel.total - 1490.34) < 1.0;
-            const stdPass = Math.abs(std.total - 2213.66) < 1.0;
-            alert(`Validation: ${selPass && stdPass ? "PASSED" : "FAILED"}\nSelect: ${sel.total.toFixed(2)} (Target: 1490.34)\nStandard: ${std.total.toFixed(2)} (Target: 2213.66)`);
-        };
+        console.groupEnd();
+        alert(`Validation Results:\nDec Bill: ${decPass ? "PASS" : "FAIL"}\nAnnual Projection: ${annualPass ? "PASS" : "FAIL"}`);
+    }
 
+    window.addEventListener('load', () => {
+        const hash = window.location.hash.slice(1);
+        if (hash) {
+            const params = new URLSearchParams(hash);
+            for (const [key, value] of params) {
+                state[key] = value;
+                if(document.getElementById(key)) document.getElementById(key).value = value;
+            }
+        }
+        if (new URLSearchParams(window.location.search).get('test') === 'true') runTests();
         render();
-    </script>
+    });
 
+    ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw', 'billMonth'].forEach(id => {
+        document.getElementById(id).addEventListener('input', (e) => state[id] = e.target.value);
+    });
+    document.getElementById('testBtn').onclick = runTests;
+</script>
+    
 </body>
 </html>
