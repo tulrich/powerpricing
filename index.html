@@ -13,156 +13,179 @@
 <body class="bg-gray-50 text-gray-900 font-sans leading-relaxed">
 
 <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col p-4">
-    <header class="mb-6 pt-4">
-        <h1 class="text-2xl font-bold text-gray-800">PowerPricing</h1>
-        <p class="text-sm text-gray-500">ConEd 2026 Bill Estimator</p>
-    </header>
+        <header class="mb-6 pt-4 text-center">
+            <h1 class="text-2xl font-bold text-gray-800">PowerPricing</h1>
+            <p class="text-sm text-gray-500">ConEd 2026 Bill Estimator</p>
+        </header>
 
-    <main class="space-y-6 flex-grow">
-        <section class="card">
-            <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-4">Usage Profile</h2>
-            <div class="grid grid-cols-2 gap-4">
-                <div class="col-span-2">
-                    <label class="block text-xs font-medium mb-1">Total Energy (kWh)</label>
-                    <input type="number" id="totalKwh" value="6547" class="w-full p-2 bg-gray-50 border rounded-md font-mono">
+        <main class="space-y-6 flex-grow">
+            <section class="card">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-4">Usage Profile</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="col-span-2">
+                        <label class="block text-xs font-medium mb-1">Total Energy (kWh)</label>
+                        <input type="number" id="totalKwh" value="6547" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-lg">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1">On-Peak kWh</label>
+                        <input type="number" id="onPeakKwh" value="1344" class="w-full p-2 bg-gray-50 border rounded-md font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1">Off-Peak kWh</label>
+                        <input type="number" id="offPeakKwh" value="5203" class="w-full p-2 bg-gray-50 border rounded-md font-mono">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-xs font-medium mb-1">Peak Demand (kW)</label>
+                        <input type="number" id="peakKw" value="15.77" step="0.01" class="w-full p-2 bg-gray-50 border rounded-md font-mono">
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-xs font-medium mb-1">On-Peak kWh</label>
-                    <input type="number" id="onPeakKwh" value="1344" class="w-full p-2 bg-gray-50 border rounded-md font-mono">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium mb-1">Off-Peak kWh</label>
-                    <input type="number" id="offPeakKwh" value="5203" class="w-full p-2 bg-gray-50 border rounded-md font-mono">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium mb-1">Peak Demand (kW)</label>
-                    <input type="number" id="peakKw" value="15.77" step="0.01" class="w-full p-2 bg-gray-50 border rounded-md font-mono">
-                </div>
-            </div>
-        </section>
+            </section>
 
-        <section class="card overflow-hidden !p-0">
-            <table class="w-full text-left border-collapse">
-                <thead class="bg-gray-50 border-b">
-                    <tr>
-                        <th class="p-3 text-xs font-bold text-gray-500 uppercase">Plan</th>
-                        <th class="p-3 text-xs font-bold text-gray-500 uppercase text-right">Est. Bill</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y">
-                    <tr id="standardRow">
-                        <td class="p-3">
-                            <div class="font-semibold text-gray-700">Standard Volumetric</div>
-                            <div class="text-[10px] text-gray-400">Total volume delivery</div>
-                        </td>
-                        <td id="standardTotal" class="p-3 text-right font-mono font-bold text-gray-600">--</td>
-                    </tr>
-                    <tr id="selectRow" class="bg-blue-50/50">
-                        <td class="p-3">
-                            <div class="font-semibold text-blue-700">Select Pricing</div>
-                            <div class="text-[10px] text-blue-500">Demand charge + Low kWh</div>
-                        </td>
-                        <td id="selectTotal" class="p-3 text-right font-mono font-bold text-blue-700">--</td>
-                    </tr>
-                </tbody>
-            </table>
-        </section>
+            <section class="card overflow-hidden !p-0">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-50 border-b">
+                        <tr>
+                            <th class="p-3 text-[10px] font-bold text-gray-500 uppercase">Itemized Bill</th>
+                            <th class="p-3 text-[10px] font-bold text-gray-500 uppercase text-right">Standard</th>
+                            <th class="p-3 text-[10px] font-bold text-gray-500 uppercase text-right">Select</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y text-sm">
+                        <tr>
+                            <td class="p-3 text-gray-600 font-medium">Delivery</td>
+                            <td id="stdDel" class="p-3 text-right font-mono text-gray-500">--</td>
+                            <td id="selDel" class="p-3 text-right font-mono text-blue-600">--</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 text-gray-600 font-medium">Supply</td>
+                            <td id="stdSup" class="p-3 text-right font-mono text-gray-500">--</td>
+                            <td id="selSup" class="p-3 text-right font-mono text-blue-600">--</td>
+                        </tr>
+                        <tr class="bg-gray-50/50 font-bold">
+                            <td class="p-3 text-gray-800">Total Bill</td>
+                            <td id="stdTotal" class="p-3 text-right font-mono text-gray-800">--</td>
+                            <td id="selTotal" class="p-3 text-right font-mono text-blue-700">--</td>
+                        </tr>
+                        <tr class="text-[10px] text-gray-400">
+                            <td class="p-3 italic">Effective $/kWh</td>
+                            <td id="stdEff" class="p-3 text-right font-mono">--</td>
+                            <td id="selEff" class="p-3 text-right font-mono">--</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
 
-        <section id="savingsCard" class="card bg-green-50 border-green-100 text-center">
-            <h2 class="text-xs font-bold uppercase text-green-600 mb-1">Estimated Monthly Savings</h2>
-            <div id="savingsAmount" class="text-4xl font-black text-green-700">--</div>
-            <p id="savingsPercent" class="text-sm font-medium text-green-600 mt-1">--</p>
-        </section>
-    </main>
+            <section id="savingsCard" class="card bg-green-50 border-green-100 text-center">
+                <h2 class="text-xs font-bold uppercase text-green-600 mb-1">Estimated Savings</h2>
+                <div id="savingsAmount" class="text-4xl font-black text-green-700">--</div>
+                <p id="savingsPercent" class="text-sm font-medium text-green-600 mt-1">--</p>
+            </section>
+        </main>
 
-    <footer class="py-6 text-center">
-        <button id="testBtn" class="text-[10px] text-gray-300 hover:text-gray-500">Run Validation Tests</button>
-    </footer>
-</div>
+        <footer class="py-6 text-center">
+            <button id="testBtn" class="text-[10px] text-gray-300 hover:text-gray-500 underline">Run Validation Tests</button>
+        </footer>
+    </div>
 
-<script type="module">
-    /** * Constants Derived from actual Dec 2025 bill & 2026 Projections 
-     * @const 
-     * UPDATED: Constants tuned to match $1,490.34 Select / $2,213.66 Standard
-     * Validation case: 6547 total kWh (1344 on / 5203 off) @ 15.77 kW Peak
-     */
-    const CONST = {
-        SC1_STD_FIXED: 20.00,
-        SC1_SEL_FIXED: 30.28,
-        SBC_RATE: 0.0051,       // System Benefits + MAC + RDM surcharges
-        GRT_RATE: 0.025,        
-        SALES_TAX: 0.045,       
+    <script type="module">
+        /**
+         * @typedef {Object} BillDetails
+         * @property {number} delivery - Total delivery cost including fixed fees and SBC.
+         * @property {number} supply - Total supply cost based on market rates.
+         * @property {number} total - Final bill including taxes.
+         * @property {number} effectiveRate - $/kWh for the entire bill.
+         */
 
-        // Delivery
-        STD_DELIVERY_KWH: 0.165, 
-        SEL_DELIVERY_KWH: 0.0098,
-        SEL_DEMAND_KW: 20.25,   // Tuned for Dec-Jan 2026 actuals
+        const CONST = {
+            SC1_STD_FIXED: 20.00,
+            SC1_SEL_FIXED: 30.28,
+            SBC_RATE: 0.0051,
+            TAX_MULT: 1.071, // Combined GRT (2.5%) and Sales Tax (4.5%)
+            STD_DELIVERY_KWH: 0.165, 
+            SEL_DELIVERY_KWH: 0.0098,
+            SEL_DEMAND_KW: 20.25,
+            SUPPLY_STD: 0.1415,
+            SUPPLY_SEL_ON: 0.205,
+            SUPPLY_SEL_OFF: 0.125
+        };
 
-        // Supply (Supply includes commodity + merchant function charges)
-        SUPPLY_STD: 0.1415,      // Yields ~$2,213 total
-        SUPPLY_SEL_ON: 0.205,    // Peak supply is higher in winter
-        SUPPLY_SEL_OFF: 0.125    // Includes market volatility for Jan
-    };
-    const state = new Proxy({
-        totalKwh: 6547,
-        onPeakKwh: 1344,
-        offPeakKwh: 5203,
-        peakKw: 15.77
-    }, {
-        set(target, prop, value) {
-            target[prop] = parseFloat(value) || 0;
-            render();
-            return true;
+        const state = new Proxy({
+            totalKwh: 6547,
+            onPeakKwh: 1344,
+            offPeakKwh: 5203,
+            peakKw: 15.77
+        }, {
+            set(target, prop, value) {
+                const numVal = parseFloat(value) || 0;
+                target[prop] = numVal;
+                
+                // If totalKwh changes, update peak estimates (approx 20% on-peak)
+                if (prop === 'totalKwh') {
+                    target.onPeakKwh = Math.round(numVal * 0.205);
+                    target.offPeakKwh = numVal - target.onPeakKwh;
+                    document.getElementById('onPeakKwh').value = target.onPeakKwh;
+                    document.getElementById('offPeakKwh').value = target.offPeakKwh;
+                }
+                render();
+                return true;
+            }
+        });
+
+        /** @returns {{std: BillDetails, sel: BillDetails}} */
+        function calculate() {
+            const getDetails = (delivery, supply, kwh) => {
+                const total = (delivery + supply) * CONST.TAX_MULT;
+                return { delivery, supply, total, effectiveRate: total / (kwh || 1) };
+            };
+
+            const stdDel = CONST.SC1_STD_FIXED + (state.totalKwh * (CONST.STD_DELIVERY_KWH + CONST.SBC_RATE));
+            const stdSup = state.totalKwh * CONST.SUPPLY_STD;
+
+            const selDel = CONST.SC1_SEL_FIXED + 
+                           (state.totalKwh * (CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE)) +
+                           (state.peakKw * CONST.SEL_DEMAND_KW);
+            const selSup = (state.onPeakKwh * CONST.SUPPLY_SEL_ON) + 
+                           (state.offPeakKwh * CONST.SUPPLY_SEL_OFF);
+
+            return {
+                std: getDetails(stdDel, stdSup, state.totalKwh),
+                sel: getDetails(selDel, selSup, state.totalKwh)
+            };
         }
-    });
 
-    function calculate() {
-        // 1. Standard Volumetric Calculation
-        const stdDelivery = CONST.SC1_STD_FIXED + (state.totalKwh * (CONST.STD_DELIVERY_KWH + CONST.SBC_RATE));
-        const stdSupply = state.totalKwh * CONST.SUPPLY_STD;
-        const stdSubtotal = stdDelivery + stdSupply;
-        const stdTotal = stdSubtotal * (1 + CONST.GRT_RATE) * (1 + CONST.SALES_TAX);
+        function render() {
+            const { std, sel } = calculate();
+            const savings = std.total - sel.total;
+            
+            const fmt = (val) => `$${val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            
+            document.getElementById('stdDel').textContent = fmt(std.delivery);
+            document.getElementById('stdSup').textContent = fmt(std.supply);
+            document.getElementById('stdTotal').textContent = fmt(std.total);
+            document.getElementById('stdEff').textContent = `$${std.effectiveRate.toFixed(3)}`;
 
-        // 2. Select Pricing Calculation
-        const selDelivery = CONST.SC1_SEL_FIXED + 
-                            (state.totalKwh * (CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE)) +
-                            (state.peakKw * CONST.SEL_DEMAND_KW);
-    
-        // ConEd bills supply based on the On-Peak/Off-Peak split
-        const selSupply = (state.onPeakKwh * CONST.SUPPLY_SEL_ON) + 
-                          (state.offPeakKwh * CONST.SUPPLY_SEL_OFF);
-                      
-        const selSubtotal = selDelivery + selSupply;
-        const selTotal = selSubtotal * (1 + CONST.GRT_RATE) * (1 + CONST.SALES_TAX);
+            document.getElementById('selDel').textContent = fmt(sel.delivery);
+            document.getElementById('selSup').textContent = fmt(sel.supply);
+            document.getElementById('selTotal').textContent = fmt(sel.total);
+            document.getElementById('selEff').textContent = `$${sel.effectiveRate.toFixed(3)}`;
 
-        return { stdTotal, selTotal, savings: stdTotal - selTotal };
-    }
-    
-    function render() {
-        const { stdTotal, selTotal, savings } = calculate();
-        
-        document.getElementById('standardTotal').textContent = `$${stdTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-        document.getElementById('selectTotal').textContent = `$${selTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-        document.getElementById('savingsAmount').textContent = `$${Math.abs(savings).toFixed(2)}`;
-        document.getElementById('savingsPercent').textContent = `${((savings/stdTotal)*100).toFixed(1)}% cheaper than Standard`;
-    }
+            document.getElementById('savingsAmount').textContent = fmt(Math.abs(savings));
+            document.getElementById('savingsPercent').textContent = `${((savings/std.total)*100).toFixed(1)}% savings vs Standard`;
+        }
 
-    // Bind inputs
-    ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw'].forEach(id => {
-        const el = document.getElementById(id);
-        el.addEventListener('input', (e) => state[id] = e.target.value);
-    });
+        ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw'].forEach(id => {
+            document.getElementById(id).addEventListener('input', (e) => state[id] = e.target.value);
+        });
 
-    // Run tests (validation against user's $1,490 bill)
-    document.getElementById('testBtn').onclick = () => {
-        const results = calculate();
-        console.assert(Math.abs(results.selTotal - 1490.34) < 50, `Select bill ($${results.selTotal.toFixed(2)}) is too far from target $1490.34`);
-        console.assert(Math.abs(results.stdTotal - 2213.66) < 100, `Std bill ($${results.stdTotal.toFixed(2)}) is too far from target $2213.66`);
-        alert("Validation complete. Check console for details.");
-    };
+        document.getElementById('testBtn').onclick = () => {
+            const { std, sel } = calculate();
+            const selPass = Math.abs(sel.total - 1490.34) < 1.0;
+            const stdPass = Math.abs(std.total - 2213.66) < 1.0;
+            alert(`Validation: ${selPass && stdPass ? "PASSED" : "FAILED"}\nSelect: ${sel.total.toFixed(2)} (Target: 1490.34)\nStandard: ${std.total.toFixed(2)} (Target: 2213.66)`);
+        };
 
-    render();
-</script>
+        render();
+    </script>
 
 </body>
 </html>
