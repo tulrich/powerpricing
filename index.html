@@ -199,41 +199,80 @@
         const p = new URLSearchParams(state);
         window.history.replaceState(null, '', '#' + p.toString());
     }
-
+    
+    /**
+     * Shadow Test Runner
+     * Validates logic against Dec 2025 bill ($1,490.34) and 2025 History (~$7,713)
+     */
     function runTests() {
         console.group('🛠 Validation Tests');
+        
+        // Test 1: Dec 2025 Bill Validation (State: 6547kWh, 15.77kW)
         const dec = calculate({totalKwh: 6547, onPeakKwh: 1344, offPeakKwh: 5203, peakKw: 15.77}, 0);
-        const decPass = Math.abs(dec.selTotal - 1490.34) < 1.0;
-        console.assert(decPass, `Dec Bill fail: ${dec.selTotal}`);
+        const expectedDec = 1490.34;
+        const decDiff = Math.abs(dec.selTotal - expectedDec);
+        const decPass = decDiff < 1.0;
+        
+        console.assert(decPass, `Dec Bill mismatch! Expected: $${expectedDec}, Actual: $${dec.selTotal.toFixed(2)} (Diff: $${decDiff.toFixed(2)})`);
 
+        // Test 2: Annual Estimate Validation
         let aStd = 0, aSel = 0;
         SEASON_WEIGHTS.forEach((w, i) => {
             const r = w / SEASON_WEIGHTS[0];
-            const est = calculate({ totalKwh: 6547*r, onPeakKwh: 1344*r, offPeakKwh: 5203*r, peakKw: 15.77*Math.sqrt(r) }, i);
-            aStd += est.stdTotal; aSel += est.selTotal;
+            const est = calculate({ 
+                totalKwh: 6547 * r, 
+                onPeakKwh: 1344 * r, 
+                offPeakKwh: 5203 * r, 
+                peakKw: 15.77 * Math.sqrt(r) 
+            }, i);
+            aStd += est.stdTotal; 
+            aSel += est.selTotal;
         });
-        const annualPass = Math.abs(aSel - 7713) < 200;
-        console.assert(annualPass, `Annual fail: ${aSel}`);
+
+        const expectedAnnual = 7713;
+        const annualDiff = Math.abs(aSel - expectedAnnual);
+        const annualPass = annualDiff < 200; // Allowing for 2026 rate hike variance
+        
+        console.assert(annualPass, `Annual Projection mismatch! Expected: ~$${expectedAnnual}, Actual: $${aSel.toFixed(0)} (Diff: $${annualDiff.toFixed(0)})`);
+        
         console.groupEnd();
-        alert(`Tests: ${decPass && annualPass ? "PASS" : "FAIL"}\nDec: ${dec.selTotal.toFixed(2)}\nYear: ${aSel.toFixed(0)}`);
+
+        // Mobile-friendly alert with details
+        const msg = decPass && annualPass ? "✅ ALL TESTS PASSED" : "❌ VALIDATION FAILED";
+        alert(`${msg}\n\nDECEMBER BILL:\nExpected: $${expectedDec}\nActual: $${dec.selTotal.toFixed(2)}\n\nANNUAL SELECT:\nExpected: ~$${expectedAnnual}\nActual: $${aSel.toFixed(0)}`);
     }
 
+    // Initialization and Event Listeners
     window.onload = () => {
         const hash = window.location.hash.slice(1);
         if (hash) {
             const p = new URLSearchParams(hash);
             for (const [k, v] of p) {
-                state[k] = v;
-                if(document.getElementById(k)) document.getElementById(k).value = v;
+                if (state.hasOwnProperty(k)) {
+                    state[k] = v;
+                    const el = document.getElementById(k);
+                    if (el) el.value = v;
+                }
             }
         }
-        if (new URLSearchParams(window.location.search).get('test') === 'true') runTests();
+        
+        // Auto-run tests if ?test=true is in URL
+        if (new URLSearchParams(window.location.search).get('test') === 'true') {
+            runTests();
+        }
         render();
     };
 
+    // Bind all inputs defined in the state
     ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw', 'billMonth'].forEach(id => {
-        document.getElementById(id).addEventListener('input', (e) => state[id] = e.target.value);
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', (e) => {
+                state[id] = e.target.value;
+            });
+        }
     });
+
     document.getElementById('testBtn').onclick = runTests;
 </script>
 </body>
