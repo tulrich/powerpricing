@@ -15,6 +15,7 @@ Project: Power Pricing Estimator
 - [x] Persist state to URL for easy sharing
 - [x] Share with local mailing lists
 - [ ] Refine UI. When the Select Plan is more expensive than standard, the UI should color the results differently (yellow for similar, red for expense instead of savings). And rephrase the "savings" terminology so users dont get confused.
+- [ ] Link to ConEd SPP pages.
 - [ ] Refine UI. Offer a click for a detailed bill breakdown (to helo educate users about how the pricing plans work).
 - [ ] Refine the UI: with the estimated annual results, show a graph with the estimated monthly results.
 
