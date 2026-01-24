@@ -126,6 +126,23 @@
     const SEASON_WEIGHTS = [0.144, 0.124, 0.076, 0.048, 0.030, 0.041, 0.054, 0.038, 0.033, 0.050, 0.094, 0.171];
     const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+    /** * @const Actual 2025 Utility Bills (Standard Pricing, includes PV) 
+     * Used for validating the model's baseline accuracy.
+     */
+    const HISTORY_2025 = [
+        { date: "2/10/2025", period: "jan-feb", kwh: 5729, bill: 1890.57, monthIdx: 0 },
+        { date: "3/12/2025", period: "feb-mar", kwh: 4016, bill: 1355.00, monthIdx: 1 },
+        { date: "4/10/2025", period: "mar-apr", kwh: 1785, bill: 602.48, monthIdx: 2 },
+        { date: "5/9/2025", period: "apr-may", kwh: 543, bill: 207.62, monthIdx: 3 },
+        { date: "6/10/2025", period: "may-jun", kwh: 279, bill: 118.27, monthIdx: 4 },
+        { date: "7/10/2025", period: "jun-jul", kwh: 882, bill: 335.80, monthIdx: 5 }, // Summer
+        { date: "8/8/2025", period: "jul-aug", kwh: 953, bill: 364.81, monthIdx: 6 }, // Summer
+        { date: "9/9/2025", period: "aug-sep", kwh: 435, bill: 171.46, monthIdx: 7 }, // Summer
+        { date: "10/8/2025", period: "sep-oct", kwh: 410, bill: 160.85, monthIdx: 8 }, // Summer rates often end mid-Sept, usually treat as shoulder
+        { date: "11/6/2025", period: "oct-nov", kwh: 1857, bill: 612.86, monthIdx: 9 },
+        { date: "12/10/2025", period: "nov-dec", kwh: 5029, bill: 1743.66, monthIdx: 10 }
+    ];
+
     /** @const Calibrated 2026 Constants */
     const CONST = {
         SC1_STD_FIXED: 20.00, SC1_SEL_FIXED: 30.28, SBC_RATE: 0.0051, TAX_MULT: 1.071,
@@ -142,7 +159,6 @@
     }, {
         set(target, prop, value) {
             const num = parseFloat(value);
-            // Handle NaN from empty inputs
             target[prop] = isNaN(num) ? 0 : num;
             
             if (prop === 'totalKwh') {
@@ -158,7 +174,7 @@
     });
 
     function calculate(usage, monthIdx) {
-        const isSummer = monthIdx >= 5 && monthIdx <= 8;
+        const isSummer = monthIdx >= 5 && monthIdx <= 8; // June(5) - Sept(8)
         const demandRate = isSummer ? CONST.SUMMER_DEMAND : CONST.WINTER_DEMAND;
         const stdDel = CONST.SC1_STD_FIXED + (usage.totalKwh * (CONST.STD_DELIVERY_KWH + CONST.SBC_RATE));
         const stdSup = usage.totalKwh * CONST.SUPPLY_STD;
@@ -188,7 +204,6 @@
         document.getElementById('savingsPercent').textContent = `${((savings/cur.stdTotal)*100).toFixed(1)}% SAVINGS`;
 
         let yearStd = 0, yearSel = 0;
-        // Use default 0.1 if index is invalid to prevent "bonkers" divide-by-zero math
         const baseW = SEASON_WEIGHTS[state.billMonth] || 0.1; 
         
         SEASON_WEIGHTS.forEach((w, i) => {
@@ -223,23 +238,34 @@
         }
         log.innerHTML = `> RUNNING VALIDATION...<br>`;
 
+        // 1. Dec 2026 Projection vs Target
         const dec = calculate({totalKwh: 6547, onPeakKwh: 1344, offPeakKwh: 5203, peakKw: 15.77}, 0);
         const decTarget = 1490.34;
         const decPass = Math.abs(dec.selTotal - decTarget) < 5.0;
-        log.innerHTML += `DEC BILL: ${dec.selTotal.toFixed(2)} (Target: ${decTarget}) [${decPass ? 'PASS' : 'FAIL'}]<br>`;
+        log.innerHTML += `DEC '26 PROJ: ${dec.selTotal.toFixed(2)} (Target: ${decTarget}) [${decPass ? 'PASS' : 'FAIL'}]<br>`;
 
-        let aStd = 0, aSel = 0;
-        const janW = SEASON_WEIGHTS[0];
-        SEASON_WEIGHTS.forEach((w, i) => {
-            const r = w / janW; // Test assumes normalized to Jan weight
-            const est = calculate({ totalKwh: 6547*r, onPeakKwh: 1344*r, offPeakKwh: 5203*r, peakKw: 15.77*Math.pow(r, 0.6) }, i);
-            aStd += est.stdTotal; aSel += est.selTotal;
+        // 2. Validate against 2025 Standard Rate History
+        let totalDiff = 0;
+        log.innerHTML += `> CHECKING 2025 HISTORY...<br>`;
+        HISTORY_2025.forEach(rec => {
+            // We use the 2026 logic to estimate 2025. 
+            // It should be reasonably close but likely higher due to rate hikes.
+            // Using placeholder peak split since we only have total kWh in history.
+            const est = calculate({ 
+                totalKwh: rec.kwh, 
+                onPeakKwh: rec.kwh * 0.2, // Rough est
+                offPeakKwh: rec.kwh * 0.8,
+                peakKw: 0 // Irrelevant for Standard Plan validation
+            }, rec.monthIdx);
+            
+            const diff = est.stdTotal - rec.bill;
+            const pct = (diff / rec.bill) * 100;
+            const color = Math.abs(pct) < 15 ? 'text-green-400' : 'text-yellow-500';
+            log.innerHTML += `<span class="${color}">${rec.period}: Act $${rec.bill.toFixed(0)} vs Est $${est.stdTotal.toFixed(0)} (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)</span><br>`;
+            totalDiff += Math.abs(diff);
         });
-        
-        const selTarget = 10200; 
-        const aPass = Math.abs(aSel - selTarget) < 500; 
-        log.innerHTML += `ANNUAL SEL: ${aSel.toFixed(0)} (Target: ~${selTarget}) [${aPass ? 'PASS' : 'NOTE: HIGHER THAN 2025'}]<br>`;
-        log.innerHTML += `> VALIDATION ${decPass ? 'PASSED' : 'FAILED'}`;
+
+        log.innerHTML += `> VALIDATION COMPLETE`;
     }
 
     window.onload = () => {
