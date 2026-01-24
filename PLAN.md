@@ -7,13 +7,16 @@ Project: Power Pricing Estimator
 ​- [x] Single HTML file boilerplate with Tailwind CSS.
 ​- [x] Define 2026 ConEd Rate Constants (Standard vs. Select).
 - ​[x] Create manual input form (Monthly kWh, Peak kW).
-- [ ] Provide a whole-year estimate based on basic manual input.
+- [x] Provide a whole-year estimate based on basic manual input.
   - The user specifies what month their input is for; the UI estimates
     the other months and gives a whole-year estimate of bills.  The
     whole-year estimate is clearly marked as approximate (perhaps with
     ranges instead of exact numbers).
-- [ ] Persist state to URL for easy sharing
-- [ ] Share with local mailing lists
+- [x] Persist state to URL for easy sharing
+- [x] Share with local mailing lists
+- [ ] Refine UI. When the Select Plan is more expensive than standard, the UI should color the results differently (yellow for similar, red for expense instead of savings). And rephrase the "savings" terminology so users dont get confused.
+- [ ] Refine UI. Offer a click for a detailed bill breakdown (to helo educate users about how the pricing plans work).
+- [ ] Refine the UI: with the estimated annual results, show a graph with the estimated monthly results.
 
 ​Phase 2: Data Intelligence
 
@@ -39,3 +42,4 @@ Project: Power Pricing Estimator
 - ​[ ] Offline support via Service Worker.
 - [ ] Crowd sourcing of bill experiences, validation of estimates.
 - [ ] Support other utilities/regions
+- [ ] Button for "my bill is different". Link to a Google Form where users can volunteer their actual data (prepopulated with their exisiting input) including a release for using the data to improve estimation.
