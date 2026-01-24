@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PowerPricing | ConEd Bill Estimator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { --google-blue: #4285f4; }
+        .card { @apply bg-white p-6 rounded-xl shadow-sm border border-gray-100; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans leading-relaxed">
+
+    <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col p-4">
+        <header class="mb-8 pt-4">
+            <h1 class="text-2xl font-bold text-gray-800">PowerPricing</h1>
+            <p class="text-sm text-gray-500">ConEd Volumetric vs. Select Pricing (2026)</p>
+        </header>
+
+        <main class="space-y-6 flex-grow">
+            <section class="card">
+                <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-4">Monthly Usage</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Total Energy (kWh)</label>
+                        <input type="number" id="kwhInput" value="800" class="w-full p-2 border rounded-md" placeholder="e.g. 800">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Peak Demand (kW)</label>
+                        <input type="number" id="kwInput" value="4.5" step="0.1" class="w-full p-2 border rounded-md" placeholder="e.g. 4.5">
+                    </div>
+                </div>
+            </section>
+
+            <section id="results" class="card bg-blue-50 border-blue-100">
+                <h2 class="text-sm font-semibold uppercase tracking-wider text-blue-600 mb-2">Estimated Savings</h2>
+                <div id="savingsOutput" class="text-4xl font-bold text-blue-700 mb-1">--</div>
+                <p id="comparisonText" class="text-sm text-blue-600">Enter data to see comparison</p>
+            </section>
+        </main>
+
+        <footer class="text-center py-6 text-xs text-gray-400">
+            All processing happens locally. Created for Park Slope Heat Pump Users.
+        </footer>
+    </div>
+
+    <script type="module">
+        /**
+         * @typedef {Object} BillComparison
+         * @property {number} standardTotal
+         * @property {number} selectTotal
+         * @property {number} savings
+         */
+
+        /** * 2026 ConEd Rate Constants (Projected NYC Zone J)
+         * @const 
+         */
+        const RATES = {
+            STANDARD_KWH: 0.165, // Volumetric supply + delivery
+            SELECT_KWH: 0.082,   // Much lower energy rate
+            SELECT_DEMAND: 18.75 // Charge per peak kW
+        };
+
+        /**
+         * Calculates bill comparison based on usage data.
+         * @param {number} kwh - Monthly energy usage in kilowatt-hours.
+         * @param {number} peakKw - Maximum demand in kilowatts.
+         * @returns {BillComparison}
+         */
+        function calculateBills(kwh, peakKw) {
+            const standardTotal = kwh * RATES.STANDARD_KWH;
+            const selectTotal = (kwh * RATES.SELECT_KWH) + (peakKw * RATES.SELECT_DEMAND);
+            
+            return {
+                standardTotal,
+                selectTotal,
+                savings: standardTotal - selectTotal
+            };
+        }
+
+        function updateUI() {
+            const kwh = parseFloat(document.getElementById('kwhInput').value) || 0;
+            const kw = parseFloat(document.getElementById('kwInput').value) || 0;
+            
+            const { standardTotal, selectTotal, savings } = calculateBills(kwh, kw);
+            const savingsPercent = ((savings / standardTotal) * 100).toFixed(1);
+
+            document.getElementById('savingsOutput').textContent = `$${savings.toFixed(2)}`;
+            document.getElementById('comparisonText').textContent = 
+                `Saving ${savingsPercent}% vs Volumetric ($${standardTotal.toFixed(2)})`;
+        }
+
+        // Initialization
+        document.querySelectorAll('input').forEach(el => el.addEventListener('input', updateUI));
+        updateUI();
+
+        // --- SHADOW TEST RUNNER ---
+        if (new URLSearchParams(window.location.search).get('test') === 'true') {
+            console.group('🛠 Shadow Tests');
+            const testResult = calculateBills(1000, 5);
+            console.assert(testResult.standardTotal === 165, 'Standard bill calc failed');
+            // (1000 * 0.082) + (5 * 18.75) = 82 + 93.75 = 175.75
+            console.assert(testResult.selectTotal === 175.75, 'Select bill calc failed');
+            console.groupEnd();
+        }
+    </script>
+</body>
+</html>
