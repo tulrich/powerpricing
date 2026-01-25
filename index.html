@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PowerPricing | ConEd Bill Estimator</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root { --google-blue: #4285f4; }
         .card { @apply bg-white p-6 rounded-xl shadow-sm border border-gray-100; }
@@ -18,7 +19,7 @@
             <span class="font-bold">⚠️ Disclaimer:</span> Vibe-coded by a ConEd customer while making breakfast. No guarantee of accuracy, use at your own risk!
         </div>
         <h1 class="text-2xl font-bold text-gray-800">PowerPricing</h1>
-        <p class="text-sm text-gray-500 font-medium">ConEd NYC 2026 Bill Estimator</p>
+        <p class="text-sm text-gray-500 font-medium">ConEd NYC 2026 Select Pricing Plan Estimator</p>
     </header>
 
     <main class="space-y-6 flex-grow">
@@ -39,19 +40,19 @@
                 </div>
                 <div class="col-span-2">
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Total Energy (kWh)</label>
-                    <input type="number" id="totalKwh" value="6547" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-lg">
+                    <input type="number" id="totalKwh" value="3270" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-lg">
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">On-Peak kWh</label>
-                    <input type="number" id="onPeakKwh" value="1344" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                    <input type="number" id="onPeakKwh" value="654" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Off-Peak kWh</label>
-                    <input type="number" id="offPeakKwh" value="5203" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                    <input type="number" id="offPeakKwh" value="2616" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
                 </div>
                 <div class="col-span-2">
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Peak Demand (kW)</label>
-                    <input type="number" id="peakKw" value="15.77" step="0.01" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                    <input type="number" id="peakKw" value="12" step="0.01" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
                 </div>
             </div>
         </section>
@@ -90,25 +91,38 @@
             </table>
         </section>
 
-        <section id="savingsCard" class="card bg-green-50 border-green-100 text-center">
-            <h2 class="text-[10px] font-bold uppercase text-green-600 mb-1">Estimated Savings</h2>
-            <div id="savingsAmount" class="text-4xl font-black text-green-700">--</div>
-            <p id="savingsPercent" class="text-xs font-bold text-green-600 mt-1 uppercase tracking-tight">--</p>
+        <section id="savingsCard" class="card text-center transition-colors duration-300">
+            <h2 id="savingsLabel" class="text-[10px] font-bold uppercase mb-1">Estimated Savings</h2>
+            <div id="savingsAmount" class="text-4xl font-black">--</div>
+            <p id="savingsPercent" class="text-xs font-bold mt-1 uppercase tracking-tight">--</p>
         </section>
 
         <section id="yearlyCard" class="card border-dashed border-2 border-gray-200 bg-gray-50/50">
             <h2 class="text-[10px] font-bold uppercase text-gray-400 mb-2">2026 Annual Projection</h2>
-            <div class="flex justify-between items-end">
+            
+            <div class="h-48 mb-4">
+                <canvas id="annualChart"></canvas>
+            </div>
+
+            <div class="flex justify-between items-end border-t border-gray-200 pt-3">
                 <div>
                     <div id="yearlyStd" class="text-xs text-gray-400 line-through">--</div>
                     <div id="yearlySel" class="text-2xl font-black text-gray-800 tracking-tight">--</div>
                 </div>
-                <div id="yearlySavings" class="text-right text-[10px] font-black text-green-600 pb-1 border-b-2 border-green-200">--</div>
+                <div id="yearlySavings" class="text-right text-[10px] font-black pb-1 border-b-2">--</div>
             </div>
             <p class="text-[9px] text-gray-400 mt-3 leading-tight italic">
                 Extrapolated from <span id="baseMonthLabel" class="font-bold text-gray-500">December</span> profile.
             </p>
         </section>
+
+        <div class="text-center">
+            <a href="https://www.coned.com/en/accounts-billing/select-pricing-plan" target="_blank" class="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider bg-blue-50 px-3 py-1.5 rounded-full">
+                <span>Learn about Select Pricing</span>
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+            </a>
+        </div>
+
     </main>
 
     <footer class="py-8 text-center space-y-4">
@@ -124,7 +138,7 @@
 <script type="module">
     /** @const Seasonal Weights from your 2025 History */
     const SEASON_WEIGHTS = [0.144, 0.124, 0.076, 0.048, 0.030, 0.041, 0.054, 0.038, 0.033, 0.050, 0.094, 0.171];
-    const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
     /** @const Actual 2025 Utility Bills (Standard Pricing, includes PV) */
     const HISTORY_2025 = [
@@ -147,18 +161,18 @@
         STD_DELIVERY_KWH: 0.165, SEL_DELIVERY_KWH: 0.0098,
         WINTER_DEMAND: 20.25, SUMMER_DEMAND: 26.50,
         
-        // Standard Plan Supply (Seasonal Split)
-        SUPPLY_STD_WINTER: 0.136, // Tuned for Winter actuals
-        SUPPLY_STD_SUMMER: 0.170, // Tuned for Summer actuals
+        SUPPLY_STD_WINTER: 0.136, 
+        SUPPLY_STD_SUMMER: 0.170, 
         
-        // Select Plan Supply (Retained for Dec Target)
         SUPPLY_SEL_ON: 0.212, 
         SUPPLY_SEL_OFF: 0.126 
     };
 
-    // Default to Month 11 (December)
+    // Chart Global
+    let chartInstance = null;
+
     const state = new Proxy({
-        totalKwh: 6547, onPeakKwh: 1344, offPeakKwh: 5203, peakKw: 15.77, billMonth: 11
+        totalKwh: 3270, onPeakKwh: 654, offPeakKwh: 2616, peakKw: 10, billMonth: 11
     }, {
         set(target, prop, value) {
             const num = parseFloat(value);
@@ -176,9 +190,8 @@
     });
 
     function calculate(usage, monthIdx) {
-        const isSummer = monthIdx >= 5 && monthIdx <= 8; // June-Sept
+        const isSummer = monthIdx >= 5 && monthIdx <= 8;
         
-        // Dynamic rates based on season
         const demandRate = isSummer ? CONST.SUMMER_DEMAND : CONST.WINTER_DEMAND;
         const stdSupplyRate = isSummer ? CONST.SUPPLY_STD_SUMMER : CONST.SUPPLY_STD_WINTER;
         
@@ -199,7 +212,9 @@
         const cur = calculate(state, parseInt(state.billMonth));
         const savings = cur.stdTotal - cur.selTotal;
         const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+	const fmt0 = (v) => `$${v.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
         
+        // --- 1. Basic Bill Table ---
         document.getElementById('stdDel').textContent = fmt(cur.stdDel);
         document.getElementById('stdSup').textContent = fmt(cur.stdSup);
         document.getElementById('stdTotal').textContent = fmt(cur.stdTotal);
@@ -208,11 +223,35 @@
         document.getElementById('selSup').textContent = fmt(cur.selSup);
         document.getElementById('selTotal').textContent = fmt(cur.selTotal);
         document.getElementById('selEff').textContent = `$${(cur.selTotal / (state.totalKwh || 1)).toFixed(3)}`;
-        document.getElementById('savingsAmount').textContent = fmt(Math.abs(savings));
-        document.getElementById('savingsPercent').textContent = `${((savings/cur.stdTotal)*100).toFixed(1)}% SAVINGS`;
 
+        // --- 2. Dynamic Savings Card ---
+        const savingsCard = document.getElementById('savingsCard');
+        const savingsLabel = document.getElementById('savingsLabel');
+        const savingsAmount = document.getElementById('savingsAmount');
+        const savingsPercent = document.getElementById('savingsPercent');
+
+        if (savings >= 0) {
+            savingsCard.className = 'card bg-green-50 border-green-100 text-center';
+            savingsLabel.className = 'text-[10px] font-bold uppercase text-green-600 mb-1';
+            savingsLabel.textContent = 'Estimated Savings';
+            savingsAmount.className = 'text-4xl font-black text-green-700';
+            savingsAmount.textContent = fmt(savings);
+            savingsPercent.className = 'text-xs font-bold text-green-600 mt-1 uppercase tracking-tight';
+            savingsPercent.textContent = `${((savings/cur.stdTotal)*100).toFixed(1)}% SAVINGS`;
+        } else {
+            savingsCard.className = 'card bg-orange-50 border-orange-100 text-center';
+            savingsLabel.className = 'text-[10px] font-bold uppercase text-orange-600 mb-1';
+            savingsLabel.textContent = 'Extra Cost';
+            savingsAmount.className = 'text-4xl font-black text-orange-700';
+            savingsAmount.textContent = fmt(Math.abs(savings));
+            savingsPercent.className = 'text-xs font-bold text-orange-600 mt-1 uppercase tracking-tight';
+            savingsPercent.textContent = `${((Math.abs(savings)/cur.stdTotal)*100).toFixed(1)}% MORE EXPENSIVE`;
+        }
+
+        // --- 3. Annual Projection & Chart ---
         let yearStd = 0, yearSel = 0;
         const baseW = SEASON_WEIGHTS[state.billMonth] || 0.1; 
+        const monthlyData = { labels: MONTH_NAMES, std: [], sel: [] };
         
         SEASON_WEIGHTS.forEach((w, i) => {
             const r = w / baseW;
@@ -224,12 +263,71 @@
             }, i);
             yearStd += est.stdTotal;
             yearSel += est.selTotal;
+            monthlyData.std.push(est.stdTotal);
+            monthlyData.sel.push(est.selTotal);
         });
 
+        // Update Text
+        const annualSavings = yearStd - yearSel;
         document.getElementById('yearlyStd').textContent = `$${yearStd.toLocaleString(undefined, {maximumFractionDigits:0})}`;
         document.getElementById('yearlySel').textContent = `$${yearSel.toLocaleString(undefined, {maximumFractionDigits:0})} / YEAR`;
-        document.getElementById('yearlySavings').textContent = `-$${(yearStd - yearSel).toLocaleString(undefined, {maximumFractionDigits:0})} ANNUAL SAVINGS`;
+        
+        const yearlySavingsEl = document.getElementById('yearlySavings');
+        if (annualSavings >= 0) {
+            yearlySavingsEl.textContent = `${fmt0(annualSavings)} ANNUAL SAVINGS`;
+            yearlySavingsEl.className = 'text-right text-[10px] font-black text-green-600 pb-1 border-b-2 border-green-200';
+        } else {
+            yearlySavingsEl.textContent = `+${fmt0(annualSavings)} EXTRA COST`;
+            yearlySavingsEl.className = 'text-right text-[10px] font-black text-orange-600 pb-1 border-b-2 border-orange-200';
+        }
         document.getElementById('baseMonthLabel').textContent = MONTH_NAMES[state.billMonth] || "Unknown";
+
+        // Render Chart
+        renderChart(monthlyData);
+    }
+
+    function renderChart(data) {
+        const ctx = document.getElementById('annualChart').getContext('2d');
+        if (chartInstance) chartInstance.destroy();
+
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [
+                    {
+                        label: 'Standard',
+                        data: data.std,
+                        borderColor: '#9ca3af', // Gray-400
+                        backgroundColor: '#9ca3af',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Select Pricing',
+                        data: data.sel,
+                        borderColor: '#4285f4', // Blue
+                        backgroundColor: '#4285f4',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+                    tooltip: { mode: 'index', intersect: false }
+                },
+                scales: {
+                    y: { display: false },
+                    x: { grid: { display: false }, ticks: { font: { size: 8 } } }
+                }
+            }
+        });
     }
 
     function syncToUrl() {
@@ -237,13 +335,18 @@
         window.history.replaceState(null, '', '#' + p.toString());
     }
 
-    function runTests() {
+    function toggleTestWindow() {
         let log = document.getElementById('testLog') || document.createElement('div');
         if (!log.id) {
             log.id = 'testLog';
             log.className = 'mt-4 p-4 bg-black text-green-400 font-mono text-[10px] rounded overflow-x-auto';
             document.querySelector('main').appendChild(log);
+  	  runTests(log);
+        } else {
+  	  document.querySelector('main').removeChild(log);
         }
+    }
+    function runTests(log) {
         log.innerHTML = `> RUNNING VALIDATION...<br>`;
 
         // 1. Dec 2026 Projection vs Target
@@ -253,7 +356,6 @@
         log.innerHTML += `DEC '26 PROJ: ${dec.selTotal.toFixed(2)} (Target: ${decTarget}) [${decPass ? 'PASS' : 'FAIL'}]<br>`;
 
         // 2. Validate against 2025 Standard Rate History
-        let totalDiff = 0;
         log.innerHTML += `> CHECKING 2025 HISTORY...<br>`;
         HISTORY_2025.forEach(rec => {
             const est = calculate({ 
@@ -289,7 +391,7 @@
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', (e) => state[id] = e.target.value);
     });
-    document.getElementById('testBtn').onclick = runTests;
+    document.getElementById('testBtn').onclick = toggleTestWindow;
 </script>
 </body>
 </html>
