@@ -1,12 +1,12 @@
 Project: Power Pricing Estimator
 
-​Goal: A single-file, mobile-friendly tool to compare ConEd Volumetric vs. Select Pricing for NYC heat pump users.
+Goal: A single-file, mobile-friendly tool to compare ConEd Volumetric vs. Select Pricing for NYC heat pump users.
 
-​Phase 1: Foundation
+Phase 1: Foundation
 
-​- [x] Single HTML file boilerplate with Tailwind CSS.
-​- [x] Define 2026 ConEd Rate Constants (Standard vs. Select).
-- ​[x] Create manual input form (Monthly kWh, Peak kW).
+- [x] Single HTML file boilerplate with Tailwind CSS.
+- [x] Define 2026 ConEd Rate Constants (Standard vs. Select).
+- [x] Create manual input form (Monthly kWh, Peak kW).
 - [x] Provide a whole-year estimate based on basic manual input.
   - The user specifies what month their input is for; the UI estimates
     the other months and gives a whole-year estimate of bills.  The
@@ -14,33 +14,49 @@ Project: Power Pricing Estimator
     ranges instead of exact numbers).
 - [x] Persist state to URL for easy sharing
 - [x] Share with local mailing lists
-- [ ] Refine UI. When the Select Plan is more expensive than standard, the UI should color the results differently (yellow for similar, red for expense instead of savings). And rephrase the "savings" terminology so users dont get confused.
-- [ ] Link to ConEd SPP pages.
-- [ ] Refine UI. Offer a click for a detailed bill breakdown (to helo educate users about how the pricing plans work).
-- [ ] Refine the UI: with the estimated annual results, show a graph with the estimated monthly results.
+- [x] Refine UI. When the Select Plan is more expensive than standard, the UI should color the results differently (yellow for similar, red for expense instead of savings). And rephrase the "savings" terminology so users dont get confused.
+- [x] Link to ConEd SPP pages.
+- [x] Refine UI. Offer a click for a detailed bill breakdown (to help educate users about how the pricing plans work).
+- [x] Refine the UI: with the estimated annual results, show a graph with the estimated monthly results.
 
-​Phase 2: Data Intelligence
+Phase 2: Data Intelligence
 
-​- [ ] Implement "Green Button" XML/CSV parser.
-​- [ ] Logic to extract peak demand (kW) and total usage (kWh) from intervals.
-- ​[ ] Comparison visualization (Standard vs. Select).
+- [ ] Implement "Green Button" XML/CSV .zip parser.
+- [ ] Logic to extract peak demand (kW) and total usage (kWh) from intervals.
+- [ ] Comparison visualization (Standard vs. Select).
 
-​Phase 3: Extended Features
+Phase 3: Let User Configure Their Usage
 
-- ​[ ] "Share" functionality (generate a link with params).
-- [ ] Support Emporia Vue data upload
-- [ ] Options for estimating based on
-  - [ ] Solar PV
-  - [ ] AC usage
-  - [ ] electric vs gas dryers. stoves
-  - [ ] Car charging
-- [ ] Analyze possible cost/benefit of changes.
-  - [ ] Switching any of the above options.
-  - [ ] Using green button data, figure out which hours contributed to the peak
-        calcs and try to break out the contributors. If we have Vue data, we may
-        have per-circuit hourly usage and we could identify car charging, heat pump,
-        water heater, stove/oven, dryer, what-have-you...
-- ​[ ] Offline support via Service Worker.
-- [ ] Crowd sourcing of bill experiences, validation of estimates.
+Many users won't know their peak demand and may not be able to figure
+out the Green Button download, but they hopefully know how much their
+bill is. This info may help us guess demand for those users. Also the
+info will be helpful for analysis even when usage is known.
+
+- [ ] User gives typical bill for a particular month; use this to
+      back-out kwh (or let them specify it if they have it from their
+      bill)
+- [ ] Specify location/climate zone
+- [ ] Specify heating type (combustion fuel, air source HP, ground source HP, hybrid)
+- [ ] Car charging (miles/year)
+- [ ] Electric or gas stove, oven
+- [ ] Electric or gas dryer
+- [ ] Hot water: gas/oil, electric, electric heat pump
+- [ ] Electric hot tub?
+- [ ] PV (size in KW)
+
+Phase 4: Advanced Analysis
+
+- [ ] Support Emporia Vue data upload.
+- [ ] Nice visualization of usage data - show the peaks that impacted demand charges.
+- [ ] Estimate likely impact of changing any of the configuration options.
+- [ ] Based on green button or Vue data, figure out which hours contributed to the peak
+      calcs and try to break out the contributors. If we have Vue data, we may
+      have per-circuit hourly usage and we could identify which circuit contributed to
+      peaks.
+- [ ] Estimate likely impact of behavior changes (e.g. shift timing of dryer usage,
+      pre-heating or pre-cooling, etc).
+- [ ] Offline support via Service Worker.
 - [ ] Support other utilities/regions
-- [ ] Button for "my bill is different". Link to a Google Form where users can volunteer their actual data (prepopulated with their exisiting input) including a release for using the data to improve estimation.
+- [ ] Crowd sourcing: button for "my bill is different". Link to a Google Form where users
+      can volunteer their actual bill data (prepopulated with their exisiting input)
+      including a release for using the data to improve estimation.

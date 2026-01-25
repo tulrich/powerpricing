@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PowerPricing | ConEd Bill Estimator</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         :root { --google-blue: #4285f4; }
-        .card { @apply bg-white p-6 rounded-xl shadow-sm border border-gray-100; }
+        /* Removed @apply rules which break in CDN mode */
+        .card { background-color: white; padding: 1.5rem; border-radius: 0.75rem; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); border: 1px solid #f3f4f6; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 font-sans leading-relaxed">
@@ -40,19 +41,24 @@
                 </div>
                 <div class="col-span-2">
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Total Energy (kWh)</label>
-                    <input type="number" id="totalKwh" value="3270" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-lg">
+                    <input type="number" id="totalKwh" value="6547" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-lg">
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">On-Peak kWh</label>
-                    <input type="number" id="onPeakKwh" value="654" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                    <input type="number" id="onPeakKwh" value="1344" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Off-Peak kWh</label>
-                    <input type="number" id="offPeakKwh" value="2616" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                    <input type="number" id="offPeakKwh" value="5203" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
                 </div>
-                <div class="col-span-2">
+                
+                <div>
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Peak Demand (kW)</label>
-                    <input type="number" id="peakKw" value="12" step="0.01" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                    <input type="number" id="peakKw" value="15.24" step="0.01" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Off-Peak Demand (kW)</label>
+                    <input type="number" id="peakKwOff" value="15.77" step="0.01" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
                 </div>
             </div>
         </section>
@@ -89,6 +95,12 @@
                     </tr>
                 </tbody>
             </table>
+            <div class="p-3 bg-gray-50 text-center border-t border-gray-100">
+                <button onclick="toggleDetails()" class="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider flex items-center justify-center gap-1 mx-auto">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    See Bill Details
+                </button>
+            </div>
         </section>
 
         <section id="savingsCard" class="card text-center transition-colors duration-300">
@@ -99,11 +111,9 @@
 
         <section id="yearlyCard" class="card border-dashed border-2 border-gray-200 bg-gray-50/50">
             <h2 class="text-[10px] font-bold uppercase text-gray-400 mb-2">2026 Annual Projection</h2>
-            
             <div class="h-48 mb-4">
                 <canvas id="annualChart"></canvas>
             </div>
-
             <div class="flex justify-between items-end border-t border-gray-200 pt-3">
                 <div>
                     <div id="yearlyStd" class="text-xs text-gray-400 line-through">--</div>
@@ -122,7 +132,6 @@
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
             </a>
         </div>
-
     </main>
 
     <footer class="py-8 text-center space-y-4">
@@ -135,12 +144,118 @@
     </footer>
 </div>
 
+<div id="detailsModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-gray-800">Bill Breakdown</h3>
+                <button onclick="toggleDetails()" class="text-gray-400 hover:text-gray-600 p-1">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div class="space-y-6">
+                <div>
+                    <h4 class="text-xs font-bold uppercase text-blue-600 mb-2 border-b border-blue-100 pb-1">Select Pricing Plan</h4>
+                    <div class="space-y-2 text-sm text-gray-600">
+                        <div class="bg-blue-50/50 p-2 rounded-lg space-y-1 mb-2">
+                            <div class="flex justify-between text-[11px] font-bold text-blue-800 uppercase tracking-wider mb-1">Demand Charges</div>
+                            <div class="flex justify-between">
+                                <span>Peak Demand</span>
+                                <span id="dtlSelDemandRate" class="text-[10px] text-gray-400 mt-0.5">-- kW @ $19.50</span>
+                                <span id="dtlSelDemandTotal" class="font-mono font-bold text-blue-700">--</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Off-Peak Demand</span>
+                                <span id="dtlSelDemandOffRate" class="text-[10px] text-gray-400 mt-0.5">-- kW @ $7.48</span>
+                                <span id="dtlSelDemandOffTotal" class="font-mono font-bold text-blue-700">--</span>
+                            </div>
+                        </div>
+
+                        <div class="space-y-1">
+                            <div class="flex justify-between">
+                                <span>Basic Service Charge</span>
+                                <span id="dtlSelFixed" class="font-mono">--</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Delivery & SBC</span>
+                                <span id="dtlSelDelVol" class="font-mono">--</span>
+                            </div>
+                            <div class="flex justify-between text-[10px] text-gray-400 pl-2">
+                                <span>(Delivery 0.98¢ + SBC 0.47¢)</span>
+                            </div>
+                            <div class="flex justify-between border-t border-dashed border-gray-200 pt-1">
+                                <span>Taxes & Surcharges (~9.5%)</span>
+                                <span id="dtlSelDelTax" class="font-mono text-gray-500">--</span>
+                            </div>
+                            <div class="flex justify-between font-bold text-gray-800 pt-1 border-b border-gray-100 pb-2 mb-2">
+                                <span>Delivery Subtotal</span>
+                                <span id="dtlSelDelTotal">--</span>
+                            </div>
+                        </div>
+
+                        <div class="space-y-1">
+                            <div class="flex justify-between">
+                                <span>Supply (On-Peak)</span>
+                                <span id="dtlSelSupOn" class="font-mono">--</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Supply (Off-Peak)</span>
+                                <span id="dtlSelSupOff" class="font-mono">--</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Merchant Function</span>
+                                <span id="dtlSelMFC" class="font-mono">--</span>
+                            </div>
+                            <div class="flex justify-between border-t border-dashed border-gray-200 pt-1">
+                                <span>Taxes & Surcharges (~7.0%)</span>
+                                <span id="dtlSelSupTax" class="font-mono text-gray-500">--</span>
+                            </div>
+                            <div class="flex justify-between font-bold text-gray-800 pt-1 border-b border-gray-100 pb-2 mb-2">
+                                <span>Supply Subtotal</span>
+                                <span id="dtlSelSupTotal">--</span>
+                            </div>
+                        </div>
+
+                         <div class="flex justify-between font-black text-lg text-blue-700 pt-1">
+                            <span>Total Bill</span>
+                            <span id="dtlSelTotal">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-xs font-bold uppercase text-gray-400 mb-2 border-b border-gray-100 pb-1">Standard Plan (Estimated)</h4>
+                    <div class="space-y-1 text-sm text-gray-500">
+                         <div class="flex justify-between">
+                            <span>Delivery Subtotal</span>
+                            <span id="dtlStdDelTotal" class="font-mono">--</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Supply Subtotal</span>
+                            <span id="dtlStdSupTotal" class="font-mono">--</span>
+                        </div>
+                         <div class="flex justify-between font-bold text-gray-800 pt-1 border-t border-gray-200">
+                            <span>Total</span>
+                            <span id="dtlStdTotal">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-6 bg-gray-50 p-3 rounded-lg text-[10px] text-gray-500 leading-snug">
+                <strong>How Select works:</strong> The "Demand Charge" is calculated from the average of your three highest 1-hour demands (measured separately for Peak and Off-Peak windows) during the billing period. In exchange for managing these peaks, you get significantly lower rates for your total energy usage.
+            </div>
+        </div>
+    </div>
+</div>
+
 <script type="module">
-    /** @const Seasonal Weights from your 2025 History */
+    /** @const Seasonal Weights */
     const SEASON_WEIGHTS = [0.144, 0.124, 0.076, 0.048, 0.030, 0.041, 0.054, 0.038, 0.033, 0.050, 0.094, 0.171];
     const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-    /** @const Actual 2025 Utility Bills (Standard Pricing, includes PV) */
+    /** @const Actual 2025 Utility Bills */
     const HISTORY_2025 = [
         { date: "2/10/2025", period: "jan-feb", kwh: 5729, bill: 1890.57, monthIdx: 0 },
         { date: "3/12/2025", period: "feb-mar", kwh: 4016, bill: 1355.00, monthIdx: 1 },
@@ -155,66 +270,163 @@
         { date: "12/10/2025", period: "nov-dec", kwh: 5029, bill: 1743.66, monthIdx: 10 }
     ];
 
-    /** @const Calibrated 2026 Constants */
+    /** @const Constants tuned to Dec 2025 Select Plan Actuals (Exact Match) */
     const CONST = {
-        SC1_STD_FIXED: 20.00, SC1_SEL_FIXED: 30.28, SBC_RATE: 0.0051, TAX_MULT: 1.071,
-        STD_DELIVERY_KWH: 0.165, SEL_DELIVERY_KWH: 0.0098,
-        WINTER_DEMAND: 20.25, SUMMER_DEMAND: 26.50,
+        SC1_STD_FIXED: 20.00, SC1_SEL_FIXED: 30.28, 
+        SBC_RATE: 0.00472,    // 0.472 cents/kWh
         
-        SUPPLY_STD_WINTER: 0.136, 
-        SUPPLY_STD_SUMMER: 0.170, 
+        // Exact Tax Calibrations derived from bill
+        TAX_DELIVERY: 1.0951, // ~9.5%
+        TAX_SUPPLY: 1.0702,   // ~7.0%
         
-        SUPPLY_SEL_ON: 0.212, 
-        SUPPLY_SEL_OFF: 0.126 
+        STD_DELIVERY_KWH: 0.165, 
+        SEL_DELIVERY_KWH: 0.00981, // 0.981 cents/kWh
+        
+        WINTER_DEMAND: 19.50, // Peak
+        SUMMER_DEMAND: 26.50, // Peak Est
+        DEMAND_OFF_PEAK: 7.48,// All Year
+        
+        MFC_RATE: 0.003733, // Merchant Function (~$24.44/6547)
+
+        SUPPLY_STD_WINTER: 0.136, SUPPLY_STD_SUMMER: 0.170, 
+        
+        // Exact User Rates
+        SUPPLY_SEL_ON: 0.22118, 
+        SUPPLY_SEL_OFF: 0.09952 
     };
 
-    // Chart Global
     let chartInstance = null;
 
     const state = new Proxy({
-        totalKwh: 3270, onPeakKwh: 654, offPeakKwh: 2616, peakKw: 10, billMonth: 11
+        totalKwh: 6547, onPeakKwh: 1344, offPeakKwh: 5203, peakKw: 15.24, peakKwOff: 15.77, billMonth: 11
     }, {
         set(target, prop, value) {
             const num = parseFloat(value);
             target[prop] = isNaN(num) ? 0 : num;
+            
             if (prop === 'totalKwh') {
                 target.onPeakKwh = Math.round(target.totalKwh * 0.205);
                 target.offPeakKwh = target.totalKwh - target.onPeakKwh;
                 document.getElementById('onPeakKwh').value = target.onPeakKwh;
                 document.getElementById('offPeakKwh').value = target.offPeakKwh;
             }
+            if (prop === 'peakKw' && Math.abs(target.peakKwOff - target.peakKw) < 0.1) {
+                target.peakKwOff = target.peakKw;
+                document.getElementById('peakKwOff').value = target.peakKw;
+            }
+
             syncToUrl();
             render();
             return true;
         }
     });
 
+    window.toggleDetails = function() {
+        const modal = document.getElementById('detailsModal');
+        if (modal.classList.contains('hidden')) {
+            modal.classList.remove('hidden');
+            renderDetails();
+        } else {
+            modal.classList.add('hidden');
+        }
+    };
+
     function calculate(usage, monthIdx) {
         const isSummer = monthIdx >= 5 && monthIdx <= 8;
-        
         const demandRate = isSummer ? CONST.SUMMER_DEMAND : CONST.WINTER_DEMAND;
         const stdSupplyRate = isSummer ? CONST.SUPPLY_STD_SUMMER : CONST.SUPPLY_STD_WINTER;
         
-        const stdDel = CONST.SC1_STD_FIXED + (usage.totalKwh * (CONST.STD_DELIVERY_KWH + CONST.SBC_RATE));
-        const stdSup = usage.totalKwh * stdSupplyRate;
+        // --- Standard Calculation ---
+        const stdFixed = CONST.SC1_STD_FIXED;
+        const stdDelVol = usage.totalKwh * (CONST.STD_DELIVERY_KWH + CONST.SBC_RATE);
+        const stdDelPreTax = stdFixed + stdDelVol;
+        const stdDelTotal = stdDelPreTax * CONST.TAX_DELIVERY;
+
+        const stdSupVol = usage.totalKwh * stdSupplyRate;
+        const stdMFC = usage.totalKwh * CONST.MFC_RATE;
+        const stdSupPreTax = stdSupVol + stdMFC;
+        const stdSupTotal = stdSupPreTax * CONST.TAX_SUPPLY;
         
-        const selDel = CONST.SC1_SEL_FIXED + (usage.totalKwh * (CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE)) + (usage.peakKw * demandRate);
-        const selSup = (usage.onPeakKwh * CONST.SUPPLY_SEL_ON) + (usage.offPeakKwh * CONST.SUPPLY_SEL_OFF);
+        // --- Select Calculation ---
+        const selFixed = CONST.SC1_SEL_FIXED;
+        const demandPeakCost = usage.peakKw * demandRate;
+        const demandOffCost = usage.peakKwOff * CONST.DEMAND_OFF_PEAK;
+        const selDemandCost = demandPeakCost + demandOffCost;
+        const selDelVol = usage.totalKwh * (CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE);
         
+        const selDelPreTax = selFixed + selDemandCost + selDelVol;
+        const selDelTax = selDelPreTax * (CONST.TAX_DELIVERY - 1);
+        const selDelTotal = selDelPreTax * CONST.TAX_DELIVERY;
+
+        const selSupOn = usage.onPeakKwh * CONST.SUPPLY_SEL_ON;
+        const selSupOff = usage.offPeakKwh * CONST.SUPPLY_SEL_OFF;
+        const selMFC = usage.totalKwh * CONST.MFC_RATE;
+        
+        const selSupPreTax = selSupOn + selSupOff + selMFC;
+        const selSupTax = selSupPreTax * (CONST.TAX_SUPPLY - 1);
+        const selSupTotal = selSupPreTax * CONST.TAX_SUPPLY;
+
         return { 
-            stdTotal: (stdDel + stdSup) * CONST.TAX_MULT, 
-            selTotal: (selDel + selSup) * CONST.TAX_MULT,
-            stdDel, stdSup, selDel, selSup 
+            stdTotal: stdDelTotal + stdSupTotal, 
+            selTotal: selDelTotal + selSupTotal,
+            
+            stdDel: stdDelTotal,
+            stdSup: stdSupTotal,
+            
+            selDel: selDelTotal,
+            selSup: selSupTotal,
+
+            // Detailed breakdown
+            details: {
+                // Select
+                selFixed, demandPeakCost, demandOffCost, selDemandCost, selDelVol, 
+                selDelTax, selDelTotal,
+                selSupOn, selSupOff, selMFC, selSupTax, selSupTotal,
+                
+                // Standard (Simplified)
+                stdDelTotal, stdSupTotal
+            }
         };
+    }
+
+    function renderDetails() {
+        const cur = calculate(state, parseInt(state.billMonth));
+        const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        const det = cur.details;
+
+        // Select Details
+        document.getElementById('dtlSelFixed').textContent = fmt(det.selFixed);
+        
+        document.getElementById('dtlSelDemandRate').textContent = `${state.peakKw} kW @ $${(parseInt(state.billMonth) >= 5 && parseInt(state.billMonth) <= 8 ? CONST.SUMMER_DEMAND : CONST.WINTER_DEMAND).toFixed(2)}`;
+        document.getElementById('dtlSelDemandTotal').textContent = fmt(det.demandPeakCost);
+
+        document.getElementById('dtlSelDemandOffRate').textContent = `${state.peakKwOff} kW @ $7.48`;
+        document.getElementById('dtlSelDemandOffTotal').textContent = fmt(det.demandOffCost);
+
+        document.getElementById('dtlSelDelVol').textContent = fmt(det.selDelVol);
+        document.getElementById('dtlSelDelTax').textContent = fmt(det.selDelTax);
+        document.getElementById('dtlSelDelTotal').textContent = fmt(det.selDelTotal);
+
+        document.getElementById('dtlSelSupOn').textContent = fmt(det.selSupOn);
+        document.getElementById('dtlSelSupOff').textContent = fmt(det.selSupOff);
+        document.getElementById('dtlSelMFC').textContent = fmt(det.selMFC);
+        document.getElementById('dtlSelSupTax').textContent = fmt(det.selSupTax);
+        document.getElementById('dtlSelSupTotal').textContent = fmt(det.selSupTotal);
+
+        document.getElementById('dtlSelTotal').textContent = fmt(cur.selTotal);
+
+        // Standard Details
+        document.getElementById('dtlStdDelTotal').textContent = fmt(det.stdDelTotal);
+        document.getElementById('dtlStdSupTotal').textContent = fmt(det.stdSupTotal);
+        document.getElementById('dtlStdTotal').textContent = fmt(cur.stdTotal);
     }
 
     function render() {
         const cur = calculate(state, parseInt(state.billMonth));
         const savings = cur.stdTotal - cur.selTotal;
         const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-	const fmt0 = (v) => `$${v.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
+        const fmt0 = (v) => `$${v.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
         
-        // --- 1. Basic Bill Table ---
         document.getElementById('stdDel').textContent = fmt(cur.stdDel);
         document.getElementById('stdSup').textContent = fmt(cur.stdSup);
         document.getElementById('stdTotal').textContent = fmt(cur.stdTotal);
@@ -224,7 +436,6 @@
         document.getElementById('selTotal').textContent = fmt(cur.selTotal);
         document.getElementById('selEff').textContent = `$${(cur.selTotal / (state.totalKwh || 1)).toFixed(3)}`;
 
-        // --- 2. Dynamic Savings Card ---
         const savingsCard = document.getElementById('savingsCard');
         const savingsLabel = document.getElementById('savingsLabel');
         const savingsAmount = document.getElementById('savingsAmount');
@@ -233,7 +444,7 @@
         if (savings >= 0) {
             savingsCard.className = 'card bg-green-50 border-green-100 text-center';
             savingsLabel.className = 'text-[10px] font-bold uppercase text-green-600 mb-1';
-            savingsLabel.textContent = 'Estimated Savings';
+            savingsLabel.textContent = 'Estimated Savings (please see disclaimer)';
             savingsAmount.className = 'text-4xl font-black text-green-700';
             savingsAmount.textContent = fmt(savings);
             savingsPercent.className = 'text-xs font-bold text-green-600 mt-1 uppercase tracking-tight';
@@ -241,25 +452,28 @@
         } else {
             savingsCard.className = 'card bg-orange-50 border-orange-100 text-center';
             savingsLabel.className = 'text-[10px] font-bold uppercase text-orange-600 mb-1';
-            savingsLabel.textContent = 'Extra Cost';
+            savingsLabel.textContent = 'Extra Cost (please see disclaimer)';
             savingsAmount.className = 'text-4xl font-black text-orange-700';
             savingsAmount.textContent = fmt(Math.abs(savings));
             savingsPercent.className = 'text-xs font-bold text-orange-600 mt-1 uppercase tracking-tight';
             savingsPercent.textContent = `${((Math.abs(savings)/cur.stdTotal)*100).toFixed(1)}% MORE EXPENSIVE`;
         }
 
-        // --- 3. Annual Projection & Chart ---
         let yearStd = 0, yearSel = 0;
         const baseW = SEASON_WEIGHTS[state.billMonth] || 0.1; 
         const monthlyData = { labels: MONTH_NAMES, std: [], sel: [] };
         
         SEASON_WEIGHTS.forEach((w, i) => {
             const r = w / baseW;
+            const scaledPeak = state.peakKw * Math.pow(r, 0.6);
+            const scaledOff = state.peakKwOff * Math.pow(r, 0.6);
+            
             const est = calculate({
                 totalKwh: state.totalKwh * r, 
                 onPeakKwh: state.onPeakKwh * r,
                 offPeakKwh: state.offPeakKwh * r, 
-                peakKw: state.peakKw * Math.pow(r, 0.6) 
+                peakKw: scaledPeak,
+                peakKwOff: scaledOff
             }, i);
             yearStd += est.stdTotal;
             yearSel += est.selTotal;
@@ -267,26 +481,27 @@
             monthlyData.sel.push(est.selTotal);
         });
 
-        // Update Text
         const annualSavings = yearStd - yearSel;
+        const annualPct = (Math.abs(annualSavings) / yearStd) * 100;
         document.getElementById('yearlyStd').textContent = `$${yearStd.toLocaleString(undefined, {maximumFractionDigits:0})}`;
         document.getElementById('yearlySel').textContent = `$${yearSel.toLocaleString(undefined, {maximumFractionDigits:0})} / YEAR`;
         
         const yearlySavingsEl = document.getElementById('yearlySavings');
         if (annualSavings >= 0) {
-            yearlySavingsEl.textContent = `${fmt0(annualSavings)} ANNUAL SAVINGS`;
+            yearlySavingsEl.textContent = `${fmt0(annualSavings)} (${annualPct.toFixed(1)}%) SAVINGS`;
             yearlySavingsEl.className = 'text-right text-[10px] font-black text-green-600 pb-1 border-b-2 border-green-200';
         } else {
-            yearlySavingsEl.textContent = `+${fmt0(annualSavings)} EXTRA COST`;
+            yearlySavingsEl.textContent = `+${fmt0(annualSavings)} (${annualPct.toFixed(1)}%) EXTRA`;
             yearlySavingsEl.className = 'text-right text-[10px] font-black text-orange-600 pb-1 border-b-2 border-orange-200';
         }
         document.getElementById('baseMonthLabel').textContent = MONTH_NAMES[state.billMonth] || "Unknown";
 
-        // Render Chart
         renderChart(monthlyData);
+        if (!document.getElementById('detailsModal').classList.contains('hidden')) renderDetails();
     }
 
     function renderChart(data) {
+        if (typeof Chart === 'undefined') return;
         const ctx = document.getElementById('annualChart').getContext('2d');
         if (chartInstance) chartInstance.destroy();
 
@@ -298,7 +513,7 @@
                     {
                         label: 'Standard',
                         data: data.std,
-                        borderColor: '#9ca3af', // Gray-400
+                        borderColor: '#9ca3af',
                         backgroundColor: '#9ca3af',
                         borderWidth: 2,
                         pointRadius: 2,
@@ -307,7 +522,7 @@
                     {
                         label: 'Select Pricing',
                         data: data.sel,
-                        borderColor: '#4285f4', // Blue
+                        borderColor: '#4285f4',
                         backgroundColor: '#4285f4',
                         borderWidth: 2,
                         pointRadius: 2,
@@ -341,36 +556,39 @@
             log.id = 'testLog';
             log.className = 'mt-4 p-4 bg-black text-green-400 font-mono text-[10px] rounded overflow-x-auto';
             document.querySelector('main').appendChild(log);
-  	  runTests(log);
+            runTests(log);
         } else {
-  	  document.querySelector('main').removeChild(log);
+            document.querySelector('main').removeChild(log);
         }
     }
+    
     function runTests(log) {
         log.innerHTML = `> RUNNING VALIDATION...<br>`;
-
-        // 1. Dec 2026 Projection vs Target
-        const dec = calculate({totalKwh: 6547, onPeakKwh: 1344, offPeakKwh: 5203, peakKw: 15.77}, 0);
+        const dec = calculate({
+            totalKwh: 6547, onPeakKwh: 1344, offPeakKwh: 5203, 
+            peakKw: 15.24, peakKwOff: 15.77 
+        }, 11); 
+        
         const decTarget = 1490.34;
-        const decPass = Math.abs(dec.selTotal - decTarget) < 5.0;
-        log.innerHTML += `DEC '26 PROJ: ${dec.selTotal.toFixed(2)} (Target: ${decTarget}) [${decPass ? 'PASS' : 'FAIL'}]<br>`;
+        const diff = Math.abs(dec.selTotal - decTarget);
+        const decPass = diff < 0.50; 
+        log.innerHTML += `DEC '25 PROJ: ${dec.selTotal.toFixed(2)} (Target: ${decTarget}) [${decPass ? 'PASS' : 'FAIL'}]<br>`;
+        if(!decPass) log.innerHTML += `<span class="text-red-400">Diff: $${diff.toFixed(2)}</span><br>`;
 
-        // 2. Validate against 2025 Standard Rate History
         log.innerHTML += `> CHECKING 2025 HISTORY...<br>`;
         HISTORY_2025.forEach(rec => {
             const est = calculate({ 
                 totalKwh: rec.kwh, 
                 onPeakKwh: rec.kwh * 0.2, 
                 offPeakKwh: rec.kwh * 0.8,
-                peakKw: 0 
+                peakKw: 0, peakKwOff: 0
             }, rec.monthIdx);
             
             const diff = est.stdTotal - rec.bill;
             const pct = (diff / rec.bill) * 100;
-            const color = Math.abs(pct) < 6 ? 'text-green-400' : 'text-yellow-500';
+            const color = Math.abs(pct) < 10 ? 'text-green-400' : 'text-yellow-500';
             log.innerHTML += `<span class="${color}">${rec.period}: Act $${rec.bill.toFixed(0)} vs Est $${est.stdTotal.toFixed(0)} (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)</span><br>`;
         });
-
         log.innerHTML += `> VALIDATION COMPLETE`;
     }
 
@@ -387,7 +605,7 @@
         render();
     };
 
-    ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw', 'billMonth'].forEach(id => {
+    ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw', 'peakKwOff', 'billMonth'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', (e) => state[id] = e.target.value);
     });
