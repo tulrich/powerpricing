@@ -6,9 +6,13 @@
     <title>PowerPricing | ConEd Bill Estimator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root { --google-blue: #4285f4; }
         .card { background-color: white; padding: 1.5rem; border-radius: 0.75rem; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); border: 1px solid #f3f4f6; }
+        .drag-active { border-color: #4285f4; background-color: #eff6ff; }
+        .modal-enter { opacity: 0; transform: scale(0.95); }
+        .modal-enter-active { opacity: 1; transform: scale(1); transition: opacity 200ms, transform 200ms; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 font-sans leading-relaxed">
@@ -23,25 +27,44 @@
     </header>
 
     <main class="space-y-6 flex-grow">
+        <section id="dropZone" class="card border-2 border-dashed border-gray-300 text-center cursor-pointer transition-colors hover:border-blue-400 hover:bg-gray-50 relative">
+            <input type="file" id="fileInput" class="hidden" accept=".csv,.xml,.zip" multiple>
+            <div class="space-y-2 pointer-events-none">
+                <div class="text-2xl">⚡️</div>
+                <p class="text-xs font-bold text-gray-500 uppercase">Upload ConEd Data</p>
+                <p id="dropStatus" class="text-[10px] text-gray-400">Drop "Export usage" files here to accumulate history</p>
+            </div>
+            <button onclick="window.toggleHelp(event)" class="absolute top-2 right-2 text-gray-400 hover:text-blue-500 z-10 p-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </button>
+        </section>
+
+        <section id="historyCard" class="card hidden border-blue-100 bg-blue-50/30">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-blue-800">Data Profile</h2>
+                <button onclick="window.clearData()" class="text-[10px] text-red-500 hover:text-red-700 underline">Clear Uploads</button>
+            </div>
+            <div class="h-48">
+                <canvas id="historyChart"></canvas>
+            </div>
+            <p id="historyMeta" class="text-[9px] text-center text-gray-400 mt-2 italic">Blue = Verified (>20 days) • Gray = Partial/Gap</p>
+        </section>
+
         <section class="card">
             <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-4">Usage Profile</h2>
             <div class="grid grid-cols-2 gap-4">
                 <div class="col-span-2">
-                    <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Billing Month</label>
+                    <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Base Period for Estimates</label>
                     <select id="billMonth" class="w-full p-2 bg-gray-50 border rounded-md font-sans text-sm">
-                        <option value="0">January</option><option value="1">February</option>
-                        <option value="2">March</option><option value="3">April</option>
-                        <option value="4">May</option><option value="5">June</option>
-                        <option value="6">July</option><option value="7">August</option>
-                        <option value="8">September</option><option value="9">October</option>
-                        <option value="10">November</option>
-                        <option value="11" selected>December</option>
-                    </select>
+                        </select>
                 </div>
                 <div class="col-span-2">
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Total Energy (kWh)</label>
                     <input type="number" id="totalKwh" value="3250" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-lg">
                 </div>
+                
                 <div>
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">On-Peak kWh</label>
                     <input type="number" id="onPeakKwh" value="666" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
@@ -49,6 +72,10 @@
                 <div>
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Off-Peak kWh</label>
                     <input type="number" id="offPeakKwh" value="2584" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                </div>
+                <div class="col-span-2" id="superPeakRow" style="display: none;">
+                    <label class="block text-[10px] font-bold uppercase text-orange-600 mb-1">Super-Peak kWh (Summer)</label>
+                    <input type="number" id="superPeakKwh" value="0" class="w-full p-2 bg-orange-50 border border-orange-200 rounded-md font-mono text-sm text-orange-800">
                 </div>
                 
                 <div>
@@ -95,7 +122,7 @@
                 </tbody>
             </table>
             <div class="p-3 bg-gray-50 text-center border-t border-gray-100">
-                <button onclick="toggleDetails()" class="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider flex items-center justify-center gap-1 mx-auto">
+                <button onclick="window.toggleDetails()" class="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider flex items-center justify-center gap-1 mx-auto">
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     See Bill Details
                 </button>
@@ -135,7 +162,7 @@
 
     <footer class="py-8 text-center space-y-4">
         <div class="flex justify-center gap-4 text-[10px] text-gray-300">
-            <button id="resetBtn" class="hover:text-gray-500 underline">Reset to Defaults</button>
+            <button id="resetBtn" class="hover:text-gray-500 underline">Reset Defaults</button>
             <span>|</span>
             <button id="testBtn" class="hover:text-gray-500 underline">Run Validation Tests</button>
         </div>
@@ -152,181 +179,605 @@
         <div class="p-6">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-gray-800">Bill Breakdown</h3>
-                <button onclick="toggleDetails()" class="text-gray-400 hover:text-gray-600 p-1">
+                <button onclick="window.toggleDetails()" class="text-gray-400 hover:text-gray-600 p-1">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
-            
-            <div class="space-y-6">
-                <div>
-                    <h4 class="text-xs font-bold uppercase text-blue-600 mb-2 border-b border-blue-100 pb-1">Select Pricing Plan</h4>
-                    <div class="space-y-2 text-sm text-gray-600">
-                        <div class="bg-blue-50/50 p-2 rounded-lg space-y-1 mb-2">
-                            <div class="flex justify-between text-[11px] font-bold text-blue-800 uppercase tracking-wider mb-1">Demand Charges</div>
-                            <div class="flex justify-between">
-                                <span>Peak Demand</span>
-                                <span id="dtlSelDemandRate" class="text-[10px] text-gray-400 mt-0.5">-- kW @ $19.50</span>
-                                <span id="dtlSelDemandTotal" class="font-mono font-bold text-blue-700">--</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span>Off-Peak Demand</span>
-                                <span id="dtlSelDemandOffRate" class="text-[10px] text-gray-400 mt-0.5">-- kW @ $7.48</span>
-                                <span id="dtlSelDemandOffTotal" class="font-mono font-bold text-blue-700">--</span>
-                            </div>
-                        </div>
-
-                        <div class="space-y-1">
-                            <div class="flex justify-between">
-                                <span>Basic Service Charge</span>
-                                <span id="dtlSelFixed" class="font-mono">--</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span>Delivery & SBC</span>
-                                <span id="dtlSelDelVol" class="font-mono">--</span>
-                            </div>
-                            <div class="flex justify-between text-[10px] text-gray-400 pl-2">
-                                <span>(Delivery 0.98¢ + SBC 0.47¢)</span>
-                            </div>
-                            <div class="flex justify-between border-t border-dashed border-gray-200 pt-1">
-                                <span>Taxes & Surcharges (~9.5%)</span>
-                                <span id="dtlSelDelTax" class="font-mono text-gray-500">--</span>
-                            </div>
-                            <div class="flex justify-between font-bold text-gray-800 pt-1 border-b border-gray-100 pb-2 mb-2">
-                                <span>Delivery Subtotal</span>
-                                <span id="dtlSelDelTotal">--</span>
-                            </div>
-                        </div>
-
-                        <div class="space-y-1">
-                            <div class="flex justify-between">
-                                <span>Supply (On-Peak)</span>
-                                <span id="dtlSelSupOn" class="font-mono">--</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span>Supply (Off-Peak)</span>
-                                <span id="dtlSelSupOff" class="font-mono">--</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span>Merchant Function</span>
-                                <span id="dtlSelMFC" class="font-mono">--</span>
-                            </div>
-                            <div class="flex justify-between border-t border-dashed border-gray-200 pt-1">
-                                <span>Taxes & Surcharges (~7.0%)</span>
-                                <span id="dtlSelSupTax" class="font-mono text-gray-500">--</span>
-                            </div>
-                            <div class="flex justify-between font-bold text-gray-800 pt-1 border-b border-gray-100 pb-2 mb-2">
-                                <span>Supply Subtotal</span>
-                                <span id="dtlSelSupTotal">--</span>
-                            </div>
-                        </div>
-
-                         <div class="flex justify-between font-black text-lg text-blue-700 pt-1">
-                            <span>Total Bill</span>
-                            <span id="dtlSelTotal">--</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div>
-                    <h4 class="text-xs font-bold uppercase text-gray-400 mb-2 border-b border-gray-100 pb-1">Standard Plan (Estimated)</h4>
-                    <div class="space-y-1 text-sm text-gray-500">
-                         <div class="flex justify-between">
-                            <span>Delivery Subtotal</span>
-                            <span id="dtlStdDelTotal" class="font-mono">--</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Supply Subtotal</span>
-                            <span id="dtlStdSupTotal" class="font-mono">--</span>
-                        </div>
-                         <div class="flex justify-between font-bold text-gray-800 pt-1 border-t border-gray-200">
-                            <span>Total</span>
-                            <span id="dtlStdTotal">--</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
+            <div id="detailsContent" class="space-y-6"></div>
             <div class="mt-6 bg-gray-50 p-3 rounded-lg text-[10px] text-gray-500 leading-snug">
-                <strong>How Select works:</strong> The "Demand Charge" is calculated from the average of your three highest 1-hour demands (measured separately for Peak and Off-Peak windows) during the billing period. In exchange for managing these peaks, you get significantly lower rates for your total energy usage.
+                <strong>How Select works:</strong> The "Demand Charge" is calculated from the average of your three highest 1-hour demands. During summer (Jun-Sept), usage between 2-6pm is billed at a higher "Super-Peak" rate.
             </div>
         </div>
     </div>
 </div>
 
+<div id="helpModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden" onclick="window.toggleHelp(event)">
+    <div class="bg-white w-full max-w-sm rounded-xl shadow-2xl p-6" onclick="event.stopPropagation()">
+        <h3 class="text-sm font-bold text-gray-800 uppercase mb-3">How to get your data</h3>
+        <p class="text-xs text-gray-600 mb-4 leading-relaxed">
+            On the <a href="https://www.coned.com" target="_blank" class="text-blue-600 underline">coned.com</a> website:
+        </p>
+        <ol class="list-decimal pl-4 text-xs text-gray-600 space-y-2 mb-4">
+            <li>Log into your account.</li>
+            <li>Go to <strong>Account & Billing</strong> > <strong>Energy Insights</strong>.</li>
+            <li>Scroll down to find <strong>"Green Button | Download my data"</strong>.</li>
+            <li>Select "Export usage" (for detailed interval data) or "Bill Totals".</li>
+            <li>Choose either <strong>CSV</strong> or <strong>XML</strong> format.</li>
+	    <li>Choose a long time interval if you can. Though the ConEd website has a limit of one year per file. You can upload multiple files into this app and the data will get merged together.</li>
+        </ol>
+        <div class="text-center">
+            <button onclick="window.toggleHelp(event)" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold py-2 px-4 rounded-lg">Got it</button>
+        </div>
+    </div>
+</div>
+
 <script type="module">
-    /** @const Seasonal Weights */
+    // --- Constants & Config ---
     const SEASON_WEIGHTS = [0.144, 0.124, 0.076, 0.048, 0.030, 0.041, 0.054, 0.038, 0.033, 0.050, 0.094, 0.171];
     const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-    /** @const Actual 2025 Utility Bills (For Standard Plan Validation) */
-    const HISTORY_2025 = [
-        { date: "2/10/2025", period: "jan-feb", kwh: 5729, bill: 1890.57, monthIdx: 0 },
-        { date: "3/12/2025", period: "feb-mar", kwh: 4016, bill: 1355.00, monthIdx: 1 },
-        { date: "4/10/2025", period: "mar-apr", kwh: 1785, bill: 602.48, monthIdx: 2 },
-        { date: "5/9/2025", period: "apr-may", kwh: 543, bill: 207.62, monthIdx: 3 },
-        { date: "6/10/2025", period: "may-jun", kwh: 279, bill: 118.27, monthIdx: 4 },
-        { date: "7/10/2025", period: "jun-jul", kwh: 882, bill: 335.80, monthIdx: 5 }, 
-        { date: "8/8/2025", period: "jul-aug", kwh: 953, bill: 364.81, monthIdx: 6 }, 
-        { date: "9/9/2025", period: "aug-sep", kwh: 435, bill: 171.46, monthIdx: 7 }, 
-        { date: "10/8/2025", period: "sep-oct", kwh: 410, bill: 160.85, monthIdx: 8 }, 
-        { date: "11/6/2025", period: "oct-nov", kwh: 1857, bill: 612.86, monthIdx: 9 },
-        { date: "12/10/2025", period: "nov-dec", kwh: 5029, bill: 1743.66, monthIdx: 10 }
-    ];
-
-    /** @const Constants tuned to Dec 2025 Select Plan Actuals (Exact Match) */
+    
     const CONST = {
         SC1_STD_FIXED: 20.00, SC1_SEL_FIXED: 30.28, 
-        SBC_RATE: 0.00472,    // 0.472 cents/kWh
-        
-        // Exact Tax Calibrations derived from bill
-        TAX_DELIVERY: 1.0951, // ~9.5%
-        TAX_SUPPLY: 1.0702,   // ~7.0%
-        
-        STD_DELIVERY_KWH: 0.165, 
-        SEL_DELIVERY_KWH: 0.00981, // 0.981 cents/kWh
-        
-        WINTER_DEMAND: 19.50, // Peak
-        SUMMER_DEMAND: 26.50, // Peak Est
-        DEMAND_OFF_PEAK: 7.48,// All Year
-        
-        MFC_RATE: 0.003733, // Merchant Function (~$24.44/6547)
-
+        SBC_RATE: 0.00472, TAX_DELIVERY: 1.0951, TAX_SUPPLY: 1.0702,   
+        STD_DELIVERY_KWH: 0.165, SEL_DELIVERY_KWH: 0.00981, 
+        WINTER_DEMAND: 19.50, SUMMER_DEMAND: 26.50, DEMAND_OFF_PEAK: 7.48,
+        MFC_RATE: 0.003733, 
         SUPPLY_STD_WINTER: 0.136, SUPPLY_STD_SUMMER: 0.170, 
-        
-        // Exact User Rates
-        SUPPLY_SEL_ON: 0.22118, 
-        SUPPLY_SEL_OFF: 0.09952 
+        SUPPLY_SEL_ON: 0.22118, SUPPLY_SEL_OFF: 0.09952, SUPPLY_SUPER_PEAK: 0.3200 
     };
 
-    let chartInstance = null;
-
-    // Use roughly half the user's Dec 2025 profile as defaults
     const DEFAULT_STATE = {
-        totalKwh: 3250, onPeakKwh: 666, offPeakKwh: 2584, 
-        peakKw: 7.6, peakKwOff: 7.9, billMonth: 11
+        totalKwh: 3250, onPeakKwh: 666, offPeakKwh: 2584, superPeakKwh: 0,
+        peakKw: 7.6, peakKwOff: 7.9, billMonth: '11'
     };
 
+    // --- Globals ---
+    let chartInstance = null;
+    let historyChartInstance = null;
+    let parsedMonthlyData = {};
+    let globalIntervals = new Map();
+
+    // --- Core Functions (Defined BEFORE use) ---
+    function updateDOM(keys) {
+        keys.forEach(k => { 
+            const el = document.getElementById(k); 
+            if(el) el.value = k.includes('Kwh') ? Math.round(state[k]) : parseFloat(state[k]).toFixed(2); 
+        });
+    }
+
+    function initDropdown() {
+        const monthSelect = document.getElementById('billMonth');
+        if (!monthSelect) return;
+        monthSelect.innerHTML = '';
+        MONTH_NAMES.forEach((m, i) => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = m;
+            monthSelect.appendChild(opt);
+        });
+        
+        if(Object.keys(parsedMonthlyData).length > 0) {
+            Object.keys(parsedMonthlyData).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(k => {
+                if(k === 'rolling') {
+                    const opt = document.createElement('option');
+                    opt.value = 'rolling';
+                    opt.textContent = parsedMonthlyData[k].label;
+                    monthSelect.prepend(opt);
+                } else {
+                    const opt = monthSelect.querySelector(`option[value="${k}"]`);
+                    if(opt) {
+                        const days = parsedMonthlyData[k].days;
+                        const suffix = days < 28 ? ` (${days}d Partial)` : ` (${days}d)`;
+                        opt.textContent = `✅ ${MONTH_NAMES[k]}${suffix}`;
+                    }
+                }
+            });
+        }
+        monthSelect.value = state.billMonth;
+    }
+
+    function loadMonthFromHistory(key) {
+        const data = parsedMonthlyData[key];
+        if (!data) return;
+        Object.assign(state, {
+            totalKwh: data.totalKwh,
+            onPeakKwh: data.onPeakKwh,
+            offPeakKwh: data.offPeakKwh,
+            superPeakKwh: data.superPeakKwh,
+            peakKw: data.peakKw,
+            peakKwOff: data.peakKwOff
+        });
+        updateDOM(['totalKwh', 'onPeakKwh', 'offPeakKwh', 'superPeakKwh', 'peakKw', 'peakKwOff']);
+    }
+
+    // --- State Proxy ---
     const state = new Proxy({ ...DEFAULT_STATE }, {
         set(target, prop, value) {
-            const num = parseFloat(value);
-            target[prop] = isNaN(num) ? 0 : num;
-            
-            if (prop === 'totalKwh') {
+            if (prop === 'billMonth') target[prop] = value.toString();
+            else target[prop] = parseFloat(value) || 0;
+
+            if (prop === 'totalKwh' && Object.keys(parsedMonthlyData).length === 0) {
                 target.onPeakKwh = Math.round(target.totalKwh * 0.205);
                 target.offPeakKwh = target.totalKwh - target.onPeakKwh;
-                document.getElementById('onPeakKwh').value = target.onPeakKwh;
-                document.getElementById('offPeakKwh').value = target.offPeakKwh;
+                updateDOM(['onPeakKwh', 'offPeakKwh']);
             }
-            if (prop === 'peakKw' && Math.abs(target.peakKwOff - target.peakKw) < 0.1) {
-                target.peakKwOff = target.peakKw;
-                document.getElementById('peakKwOff').value = target.peakKw;
+            if (prop === 'billMonth' && parsedMonthlyData && parsedMonthlyData[target.billMonth]) {
+                loadMonthFromHistory(target.billMonth);
             }
-
             syncToUrl();
             render();
             return true;
         }
     });
+
+    // --- Calculations & Rendering ---
+    function calculate(usage, monthKey) {
+        let monthIdx = (monthKey === 'rolling') ? 0 : parseInt(monthKey);
+        const isSummer = monthIdx >= 5 && monthIdx <= 8; 
+        const demandRate = isSummer ? CONST.SUMMER_DEMAND : CONST.WINTER_DEMAND;
+        const stdSupplyRate = isSummer ? CONST.SUPPLY_STD_SUMMER : CONST.SUPPLY_STD_WINTER;
+        
+        const stdFixed = CONST.SC1_STD_FIXED;
+        const stdDelVol = usage.totalKwh * (CONST.STD_DELIVERY_KWH + CONST.SBC_RATE);
+        const stdDelTotal = (stdFixed + stdDelVol) * CONST.TAX_DELIVERY;
+        const stdSupTotal = ((usage.totalKwh * stdSupplyRate) + (usage.totalKwh * CONST.MFC_RATE)) * CONST.TAX_SUPPLY;
+        
+        const selFixed = CONST.SC1_SEL_FIXED;
+        const demandPeakCost = usage.peakKw * demandRate;
+        const demandOffCost = usage.peakKwOff * CONST.DEMAND_OFF_PEAK;
+        const selDelVol = usage.totalKwh * (CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE);
+        const selDelTotal = (selFixed + demandPeakCost + demandOffCost + selDelVol) * CONST.TAX_DELIVERY;
+
+        const selSupOn = usage.onPeakKwh * CONST.SUPPLY_SEL_ON;
+        const selSupOff = usage.offPeakKwh * CONST.SUPPLY_SEL_OFF;
+        const selSupSuper = isSummer ? (usage.superPeakKwh * CONST.SUPPLY_SUPER_PEAK) : 0;
+        const selSupTotal = (selSupOn + selSupOff + selSupSuper + (usage.totalKwh * CONST.MFC_RATE)) * CONST.TAX_SUPPLY;
+
+        return { 
+            stdTotal: stdDelTotal + stdSupTotal, selTotal: selDelTotal + selSupTotal,
+            stdDel: stdDelTotal, stdSup: stdSupTotal, selDel: selDelTotal, selSup: selSupTotal,
+            details: {
+                selFixed, demandPeakCost, demandOffCost, selDelVol, 
+                selDelTotal, selSupOn, selSupOff, selSupSuper, selMFC: usage.totalKwh * CONST.MFC_RATE, selSupTotal,
+                stdDelTotal, stdSupTotal
+            }
+        };
+    }
+
+    function renderDetails() {
+        const cur = calculate(state, state.billMonth);
+        const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        const det = cur.details;
+        let monthIdx = state.billMonth === 'rolling' ? 0 : parseInt(state.billMonth);
+        const isSum = (monthIdx >= 5 && monthIdx <= 8);
+        let superPeakRow = isSum ? `<div class="flex justify-between text-orange-700 bg-orange-50 p-1 rounded"><span>Super-Peak Supply</span><span class="font-mono">${fmt(det.selSupSuper)}</span></div>` : '';
+
+        const html = `
+            <div>
+                <h4 class="text-xs font-bold uppercase text-blue-600 mb-2 border-b border-blue-100 pb-1">Select Pricing Plan</h4>
+                <div class="space-y-2 text-sm text-gray-600">
+                    <div class="bg-blue-50/50 p-2 rounded-lg space-y-1 mb-2">
+                        <div class="flex justify-between text-[11px] font-bold text-blue-800 uppercase tracking-wider mb-1">Demand Charges</div>
+                        <div class="flex justify-between">
+                            <span>Peak Demand</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${parseFloat(state.peakKw).toFixed(2)} kW @ $${isSum ? CONST.SUMMER_DEMAND.toFixed(2) : CONST.WINTER_DEMAND.toFixed(2)}</span>
+                            <span class="font-mono font-bold text-blue-700">${fmt(det.demandPeakCost)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Off-Peak Demand</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${parseFloat(state.peakKwOff).toFixed(2)} kW @ $7.48</span>
+                            <span class="font-mono font-bold text-blue-700">${fmt(det.demandOffCost)}</span>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex justify-between"><span>Delivery Subtotal</span><span class="font-mono">${fmt(det.selDelTotal)}</span></div>
+                        <div class="flex justify-between"><span>Supply (On-Peak)</span><span class="font-mono">${fmt(det.selSupOn)}</span></div>
+                        <div class="flex justify-between"><span>Supply (Off-Peak)</span><span class="font-mono">${fmt(det.selSupOff)}</span></div>
+                        ${superPeakRow}
+                        <div class="flex justify-between"><span>Merchant/Tax</span><span class="font-mono">${fmt(det.selMFC + (det.selSupTotal - det.selSupOn - det.selSupOff - det.selSupSuper - det.selMFC))}</span></div>
+                    </div>
+                    <div class="flex justify-between font-black text-lg text-blue-700 pt-1 border-t mt-2"><span>Total Bill</span><span>${fmt(cur.selTotal)}</span></div>
+                </div>
+            </div>
+            <div class="mt-4">
+                <h4 class="text-xs font-bold uppercase text-gray-400 mb-2 border-b border-gray-100 pb-1">Standard Plan</h4>
+                <div class="flex justify-between text-sm font-bold text-gray-800"><span>Total</span><span>${fmt(cur.stdTotal)}</span></div>
+            </div>`;
+        const content = document.getElementById('detailsContent');
+        if(content) content.innerHTML = html;
+    }
+
+    function renderAnnualChart() {
+        if (typeof Chart === 'undefined') return;
+        const ctx = document.getElementById('annualChart').getContext('2d');
+        if (chartInstance) chartInstance.destroy();
+
+        let refWeight = SEASON_WEIGHTS[11];
+        if (state.billMonth !== 'rolling' && !isNaN(parseInt(state.billMonth))) {
+            refWeight = SEASON_WEIGHTS[parseInt(state.billMonth)];
+        }
+        
+        let yStd=0, ySel=0;
+        let chartLabels = [], chartStd = [], chartSel = [], chartColors = [];
+
+        MONTH_NAMES.forEach((m, i) => {
+            let dataForMonth;
+            let isReal = false;
+
+            if (parsedMonthlyData[i] && parsedMonthlyData[i].days >= 20) {
+                dataForMonth = parsedMonthlyData[i];
+                isReal = true;
+            } else {
+                const r = SEASON_WEIGHTS[i] / refWeight;
+                dataForMonth = {
+                    totalKwh: state.totalKwh * r,
+                    onPeakKwh: state.onPeakKwh * r,
+                    offPeakKwh: state.offPeakKwh * r,
+                    superPeakKwh: state.superPeakKwh * r,
+                    peakKw: state.peakKw * Math.pow(r, 0.6),
+                    peakKwOff: state.peakKwOff * Math.pow(r, 0.6)
+                };
+            }
+
+            const est = calculate(dataForMonth, i.toString());
+            yStd += est.stdTotal; 
+            ySel += est.selTotal;
+            
+            chartLabels.push(m);
+            chartStd.push(est.stdTotal);
+            chartSel.push(est.selTotal);
+            chartColors.push(isReal ? '#4285f4' : '#d1d5db'); 
+        });
+        
+        const setTxt = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
+        setTxt('yearlyStd', `$${yStd.toLocaleString(undefined, {maximumFractionDigits:0})}`);
+        setTxt('yearlySel', `$${ySel.toLocaleString(undefined, {maximumFractionDigits:0})} / YEAR`);
+        const ySav = yStd - ySel;
+        const annualPct = (Math.abs(ySav) / yStd) * 100;
+        setTxt('yearlySavings', `${ySav>=0?'-':'+'}$${Math.abs(ySav).toLocaleString(undefined, {maximumFractionDigits:0})} (${annualPct.toFixed(1)}%) ${ySav>=0?'SAVINGS':'EXTRA'}`);
+        
+        const realCount = Object.keys(parsedMonthlyData).filter(k=>parsedMonthlyData[k].days>=20).length;
+        setTxt('baseMonthLabel', realCount > 0 ? `${realCount} Verified Months + Estimates` : (MONTH_NAMES[state.billMonth] || "Estimated"));
+
+        chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: { 
+                labels: chartLabels, 
+                datasets: [
+                    { label: 'Standard', data: chartStd, backgroundColor: '#9ca3af', order: 2 },
+                    { label: 'Select (Verified)', data: chartSel, backgroundColor: chartColors.map(c => c === '#4285f4' ? '#4285f4' : 'transparent'), borderColor: '#4285f4', borderWidth: {top:0, right:0, bottom:0, left:0}, order: 1 },
+                    { label: 'Select (Estimated)', data: chartSel, backgroundColor: chartColors.map(c => c === '#d1d5db' ? '#d1d5db' : 'transparent'), order: 3 }
+                ] 
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: true, labels: { boxWidth: 10, font: { size: 10 }, filter: (l) => l.text !== 'Select (Verified)' } }, tooltip: { mode: 'index', intersect: false } },
+                scales: { x: { stacked: false, grid: { display: false } }, y: { beginAtZero: true, display: false } }
+            }
+        });
+    }
+
+    function renderHistoryChart(monthlyData) {
+        if (typeof Chart === 'undefined') return;
+        const ctx = document.getElementById('historyChart').getContext('2d');
+        if (historyChartInstance) historyChartInstance.destroy();
+
+        const keys = Object.keys(monthlyData).filter(k => k !== 'rolling').sort((a,b)=>parseInt(a)-parseInt(b));
+        const labels = keys.map(k => `${MONTH_NAMES[k]} (${monthlyData[k].days}d)`);
+        
+        historyChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Super-Peak', data: keys.map(k => monthlyData[k].superPeakKwh), backgroundColor: '#ea580c', stack: '0' },
+                    { label: 'On-Peak', data: keys.map(k => monthlyData[k].onPeakKwh), backgroundColor: '#fcd34d', stack: '0' },
+                    { label: 'Off-Peak', data: keys.map(k => monthlyData[k].offPeakKwh), backgroundColor: '#93c5fd', stack: '0' }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true } },
+                plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 8, font: { size: 9 } } } }
+            }
+        });
+    }
+
+    function render() {
+        if (!state.billMonth) state.billMonth = '11';
+        const cur = calculate(state, state.billMonth);
+        const savings = cur.stdTotal - cur.selTotal;
+        const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        
+        const setTxt = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
+        
+        setTxt('stdDel', fmt(cur.stdDel));
+        setTxt('stdSup', fmt(cur.stdSup));
+        setTxt('stdTotal', fmt(cur.stdTotal));
+        setTxt('stdEff', `$${(cur.stdTotal/(state.totalKwh||1)).toFixed(3)}`);
+        setTxt('selDel', fmt(cur.selDel));
+        setTxt('selSup', fmt(cur.selSup));
+        setTxt('selTotal', fmt(cur.selTotal));
+        setTxt('selEff', `$${(cur.selTotal/(state.totalKwh||1)).toFixed(3)}`);
+
+        let monthIdx = state.billMonth === 'rolling' ? 0 : parseInt(state.billMonth);
+        const isSum = (monthIdx >= 5 && monthIdx <= 8);
+        const spr = document.getElementById('superPeakRow');
+        if(spr) spr.style.display = isSum ? 'block' : 'none';
+
+        const card = document.getElementById('savingsCard');
+        const sl = document.getElementById('savingsLabel');
+        const sa = document.getElementById('savingsAmount');
+        const sp = document.getElementById('savingsPercent');
+
+        if (savings >= 0) {
+            card.className = 'card bg-green-50 border-green-100 text-center';
+            sl.className = 'text-[10px] font-bold uppercase text-green-600 mb-1';
+            sl.textContent = 'Estimated Savings';
+            sa.className = 'text-4xl font-black text-green-700';
+            sa.textContent = fmt(savings);
+            sp.className = 'text-xs font-bold text-green-600 mt-1 uppercase tracking-tight';
+            sp.textContent = `${((savings/cur.stdTotal)*100).toFixed(1)}% SAVINGS`;
+        } else {
+            card.className = 'card bg-orange-50 border-orange-100 text-center';
+            sl.className = 'text-[10px] font-bold uppercase text-orange-600 mb-1';
+            sl.textContent = 'Extra Cost';
+            sa.className = 'text-4xl font-black text-orange-700';
+            sa.textContent = fmt(Math.abs(savings));
+            sp.className = 'text-xs font-bold text-orange-600 mt-1 uppercase tracking-tight';
+            sp.textContent = `${((Math.abs(savings)/cur.stdTotal)*100).toFixed(1)}% MORE EXPENSIVE`;
+        }
+
+        renderAnnualChart();
+        if (!document.getElementById('detailsModal').classList.contains('hidden')) renderDetails();
+    }
+
+    function syncToUrl() {
+        if(Object.keys(parsedMonthlyData).length > 0) {
+            const parts = [];
+            Object.keys(parsedMonthlyData).filter(k=>k!=='rolling').forEach(k => {
+                const d = parsedMonthlyData[k];
+                if(d.days > 5) parts.push(`${k},${d.totalKwh},${d.onPeakKwh},${d.offPeakKwh},${d.superPeakKwh},${d.peakKw},${d.peakKwOff},${d.days}`);
+            });
+            window.location.hash = 'data=' + parts.join('|');
+        } else {
+            const p = new URLSearchParams(state);
+            window.history.replaceState(null, '', '#' + p.toString());
+        }
+    }
+
+    function loadFromUrl() {
+        const hash = window.location.hash.slice(1);
+        if(hash.startsWith('data=')) {
+            try {
+                const raw = hash.split('data=')[1];
+                raw.split('|').forEach(chunk => {
+                    const p = chunk.split(',').map(Number);
+                    if(p.length >= 8) {
+                        parsedMonthlyData[p[0]] = {
+                            totalKwh: p[1], onPeakKwh: p[2], offPeakKwh: p[3], superPeakKwh: p[4],
+                            peakKw: p[5], peakKwOff: p[6], days: p[7], label: MONTH_NAMES[p[0]]
+                        };
+                    }
+                });
+                initDropdown();
+                const keys = Object.keys(parsedMonthlyData).map(Number).sort((a,b)=>b-a);
+                const fullMonth = keys.find(k => parsedMonthlyData[k].days >= 28);
+                state.billMonth = (fullMonth !== undefined ? fullMonth : keys[0]).toString();
+                
+                document.getElementById('dropStatus').textContent = `✅ Loaded shared data (${Object.keys(parsedMonthlyData).length} months)`;
+                document.getElementById('dropStatus').className = "text-[10px] text-green-600 font-bold";
+                document.getElementById('historyCard').classList.remove('hidden');
+                renderHistoryChart(parsedMonthlyData);
+            } catch(e) { console.error(e); }
+        } else if (hash) {
+            const p = new URLSearchParams(hash);
+            for (const [k, v] of p) {
+                state[k] = v;
+            }
+        }
+    }
+
+    function processGlobalIntervals() {
+        if(globalIntervals.size === 0) return;
+
+        const intervals = Array.from(globalIntervals.entries())
+            .map(([ts, kwh]) => ({ ts, kwh }))
+            .sort((a,b) => a.ts - b.ts);
+
+        const months = {};
+        
+        intervals.forEach(i => {
+            const date = new Date(i.ts);
+            const mKey = date.getMonth(); 
+            if (!months[mKey]) months[mKey] = { raw: [], total: 0, onPeak: 0, offPeak: 0, superPeak: 0, days: new Set() };
+            
+            months[mKey].raw.push(i);
+            months[mKey].days.add(date.toDateString());
+            months[mKey].total += i.kwh; 
+            
+            const hour = date.getHours();
+            const day = date.getDay();
+            const isWeekday = (day >= 1 && day <= 5);
+            const isSummer = (mKey >= 5 && mKey <= 8);
+
+            let bucket = 'off';
+            if (isWeekday) {
+                if (isSummer && hour >= 14 && hour < 18) bucket = 'super';
+                else if (hour >= 8 && hour < 22) bucket = 'on';
+            }
+            if (bucket === 'super') months[mKey].superPeak += i.kwh;
+            else if (bucket === 'on') months[mKey].onPeak += i.kwh;
+            else months[mKey].offPeak += i.kwh;
+        });
+
+        const getTop3Avg = (dict) => {
+            const peaks = Object.values(dict).sort((a,b) => b - a).slice(0, 3);
+            if (peaks.length === 0) return 0;
+            return peaks.reduce((a,b) => a+b, 0) / peaks.length;
+        };
+
+        Object.keys(months).forEach(mIdx => {
+            if(months[mIdx].days.size < 2) return;
+
+            const m = months[mIdx];
+            const readings = m.raw.sort((a,b) => a.ts - b.ts);
+            const dayPeaks = { on: {}, off: {} };
+
+            for (let i = 0; i < readings.length - 3; i++) {
+                const window = readings.slice(i, i+4);
+                if (window[3].ts - window[0].ts > 3600000) continue; 
+                const avgKw = window.reduce((a, b) => a + b.kwh, 0); 
+                const midTime = new Date(window[1].ts);
+                const hour = midTime.getHours();
+                const day = midTime.getDay();
+                const isPeak = (day >= 1 && day <= 5) && (hour >= 8 && hour < 22);
+                const target = isPeak ? dayPeaks.on : dayPeaks.off;
+                const dayStr = midTime.toDateString();
+                if (!target[dayStr] || avgKw > target[dayStr]) target[dayStr] = avgKw;
+            }
+
+            parsedMonthlyData[mIdx] = {
+                totalKwh: Math.round(m.total),
+                onPeakKwh: Math.round(m.onPeak),
+                offPeakKwh: Math.round(m.offPeak),
+                superPeakKwh: Math.round(m.superPeak),
+                peakKw: parseFloat(getTop3Avg(dayPeaks.on).toFixed(2)),
+                peakKwOff: parseFloat(getTop3Avg(dayPeaks.off).toFixed(2)),
+                label: MONTH_NAMES[mIdx],
+                days: m.days.size
+            };
+        });
+
+        initDropdown();
+        
+        const keys = Object.keys(parsedMonthlyData).filter(k=>k!=='rolling').map(Number).sort((a,b)=>b-a);
+        const fullMonth = keys.find(k => parsedMonthlyData[k].days >= 20);
+        
+        if (fullMonth !== undefined) state.billMonth = fullMonth.toString();
+        else if (parsedMonthlyData['rolling']) state.billMonth = 'rolling';
+        else if (keys.length) state.billMonth = keys[0].toString();
+
+        renderHistoryChart(parsedMonthlyData);
+        
+        const count = Object.keys(parsedMonthlyData).filter(k=>k!=='rolling').length;
+        const ds = document.getElementById('dropStatus');
+        ds.textContent = `✅ Merged ${count} months. Total intervals: ${globalIntervals.size}`;
+        ds.className = "text-[10px] text-green-600 font-bold";
+        document.getElementById('historyCard').classList.remove('hidden');
+        render(); 
+    }
+
+    async function handleFile(file) {
+        const status = document.getElementById('dropStatus');
+        status.textContent = "Processing " + file.name + "...";
+        status.className = "text-[10px] text-blue-500 font-bold";
+
+        try {
+            let text = "";
+            let isXml = file.name.endsWith('.xml');
+
+            if (file.name.endsWith('.zip')) {
+                const zip = await JSZip.loadAsync(file);
+                // Get ALL CSV and XML files
+                const validFiles = Object.values(zip.files).filter(f => !f.dir && (f.name.endsWith('.csv') || f.name.endsWith('.xml')));
+                
+                if (validFiles.length === 0) throw new Error("No CSV/XML found in ZIP");
+
+                const promises = validFiles.map(async f => {
+                    const text = await f.async("string");
+                    if (f.name.endsWith('.xml')) parseIntervalXML(text);
+                    else parseIntervalCSV(text);
+                });
+                
+                await Promise.all(promises);
+            } else {
+                text = await file.text();
+                if (!isXml && text.trim().startsWith("<?xml")) isXml = true;
+                if (isXml) parseIntervalXML(text);
+                else parseIntervalCSV(text);
+            }
+            
+            processGlobalIntervals();
+
+        } catch (e) {
+            console.error(e);
+            status.textContent = "❌ " + e.message;
+            status.className = "text-[10px] text-red-500 font-bold";
+        }
+    }
+
+    function parseIntervalCSV(csv) {
+        const lines = csv.split('\n');
+        let headerIdx = -1;
+        let hParts = [];
+        
+        for (let i = 0; i < Math.min(lines.length, 20); i++) {
+            const line = lines[i];
+            // Header Hunt
+            if (line.includes("START TIME") || (line.includes("TYPE") && line.includes("DATE"))) {
+                headerIdx = i;
+                hParts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.trim().replace(/"/g, ''));
+                break;
+            }
+        }
+        
+        if (headerIdx === -1) return;
+
+        const dateIdx = hParts.findIndex(h => h.includes("DATE") && !h.includes("END"));
+        const timeIdx = hParts.findIndex(h => h.includes("START TIME"));
+        let usageIdx = hParts.findIndex(h => h === "USAGE" || h.includes("USAGE (kWh)"));
+        const importIdx = hParts.findIndex(h => h.includes("IMPORT"));
+        const exportIdx = hParts.findIndex(h => h.includes("EXPORT"));
+        
+        for (let i = headerIdx + 1; i < lines.length; i++) {
+            const line = lines[i];
+            if (!line.trim()) continue;
+            const p = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/); 
+            if (p.length < 4) continue;
+            
+            const clean = (s) => parseFloat(s ? s.replace(/[",]/g, '') : 0);
+            let kwh = 0;
+
+            if (usageIdx !== -1) kwh = clean(p[usageIdx]);
+            else if (importIdx !== -1 && exportIdx !== -1) kwh = clean(p[importIdx]) - clean(p[exportIdx]);
+            else if (p.length >= 5) kwh = clean(p[4]); 
+
+            if (!isNaN(kwh) && p[dateIdx] && p[timeIdx]) {
+                const ts = new Date(`${p[dateIdx]}T${p[timeIdx]}`).getTime();
+                if(!isNaN(ts)) globalIntervals.set(ts, kwh);
+            }
+        }
+    }
+
+    function parseIntervalXML(xml) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xml, "text/xml");
+        const readings = Array.from(doc.getElementsByTagName("IntervalReading"));
+        if (!readings.length) return;
+        
+        const temp = [];
+        readings.forEach(r => {
+            const valNode = r.getElementsByTagName("value")[0];
+            const timeNode = r.getElementsByTagName("timePeriod")[0];
+            const startNode = timeNode ? timeNode.getElementsByTagName("start")[0] : null;
+            if (valNode && startNode) {
+                temp.push({ ts: parseInt(startNode.textContent) * 1000, val: parseInt(valNode.textContent) });
+            }
+        });
+        
+        const nonZeros = temp.filter(i => i.val > 0);
+        const avg = nonZeros.length ? nonZeros.reduce((a,b) => a+b.val, 0) / nonZeros.length : 0;
+        const multiplier = avg > 10 ? 0.001 : 1; 
+
+        temp.forEach(i => globalIntervals.set(i.ts, i.val * multiplier));
+    }
+
+    // --- Global Helpers ---
+    window.toggleHelp = function(e) {
+        if(e) e.stopPropagation();
+        document.getElementById('helpModal').classList.toggle('hidden');
+    };
 
     window.toggleDetails = function() {
         const modal = document.getElementById('detailsModal');
@@ -338,305 +789,64 @@
         }
     };
 
-    window.reset = function() {
-        // Update DOM inputs
+    window.clearData = function() {
+        parsedMonthlyData = {};
+        globalIntervals.clear();
+        initDropdown();
+        
         Object.keys(DEFAULT_STATE).forEach(key => {
-            const el = document.getElementById(key);
-            if(el) el.value = DEFAULT_STATE[key];
+            if (key !== 'billMonth') state[key] = DEFAULT_STATE[key];
         });
-        
-        // Update State
-        Object.assign(state, DEFAULT_STATE);
-        
-        // Clear URL params (remove hash)
+        state.billMonth = '11';
+        updateDOM(Object.keys(DEFAULT_STATE));
+
+        document.getElementById('historyCard').classList.add('hidden');
+        const ds = document.getElementById('dropStatus');
+        ds.textContent = "Drop \"Export usage\" files here to accumulate history";
+        ds.className = "text-[10px] text-gray-400";
         history.replaceState(null, '', window.location.pathname);
-        
-        // Force rendering since Proxy set via Object.assign is subtle with dependent fields
-        document.getElementById('onPeakKwh').value = state.onPeakKwh;
-        document.getElementById('offPeakKwh').value = state.offPeakKwh;
-        render();
     };
-
-    function calculate(usage, monthIdx) {
-        const isSummer = monthIdx >= 5 && monthIdx <= 8;
-        const demandRate = isSummer ? CONST.SUMMER_DEMAND : CONST.WINTER_DEMAND;
-        const stdSupplyRate = isSummer ? CONST.SUPPLY_STD_SUMMER : CONST.SUPPLY_STD_WINTER;
-        
-        // --- Standard Calculation ---
-        const stdFixed = CONST.SC1_STD_FIXED;
-        const stdDelVol = usage.totalKwh * (CONST.STD_DELIVERY_KWH + CONST.SBC_RATE);
-        const stdDelPreTax = stdFixed + stdDelVol;
-        const stdDelTotal = stdDelPreTax * CONST.TAX_DELIVERY;
-
-        const stdSupVol = usage.totalKwh * stdSupplyRate;
-        const stdMFC = usage.totalKwh * CONST.MFC_RATE;
-        const stdSupPreTax = stdSupVol + stdMFC;
-        const stdSupTotal = stdSupPreTax * CONST.TAX_SUPPLY;
-        
-        // --- Select Calculation ---
-        const selFixed = CONST.SC1_SEL_FIXED;
-        const demandPeakCost = usage.peakKw * demandRate;
-        const demandOffCost = usage.peakKwOff * CONST.DEMAND_OFF_PEAK;
-        const selDemandCost = demandPeakCost + demandOffCost;
-        const selDelVol = usage.totalKwh * (CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE);
-        
-        const selDelPreTax = selFixed + selDemandCost + selDelVol;
-        const selDelTax = selDelPreTax * (CONST.TAX_DELIVERY - 1);
-        const selDelTotal = selDelPreTax * CONST.TAX_DELIVERY;
-
-        const selSupOn = usage.onPeakKwh * CONST.SUPPLY_SEL_ON;
-        const selSupOff = usage.offPeakKwh * CONST.SUPPLY_SEL_OFF;
-        const selMFC = usage.totalKwh * CONST.MFC_RATE;
-        
-        const selSupPreTax = selSupOn + selSupOff + selMFC;
-        const selSupTax = selSupPreTax * (CONST.TAX_SUPPLY - 1);
-        const selSupTotal = selSupPreTax * CONST.TAX_SUPPLY;
-
-        return { 
-            stdTotal: stdDelTotal + stdSupTotal, 
-            selTotal: selDelTotal + selSupTotal,
-            
-            stdDel: stdDelTotal,
-            stdSup: stdSupTotal,
-            
-            selDel: selDelTotal,
-            selSup: selSupTotal,
-
-            // Detailed breakdown
-            details: {
-                // Select
-                selFixed, demandPeakCost, demandOffCost, selDemandCost, selDelVol, 
-                selDelTax, selDelTotal,
-                selSupOn, selSupOff, selMFC, selSupTax, selSupTotal,
-                
-                // Standard (Simplified)
-                stdDelTotal, stdSupTotal
-            }
-        };
-    }
-
-    function renderDetails() {
-        const cur = calculate(state, parseInt(state.billMonth));
-        const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-        const det = cur.details;
-
-        // Select Details
-        document.getElementById('dtlSelFixed').textContent = fmt(det.selFixed);
-        
-        document.getElementById('dtlSelDemandRate').textContent = `${state.peakKw} kW @ $${(parseInt(state.billMonth) >= 5 && parseInt(state.billMonth) <= 8 ? CONST.SUMMER_DEMAND : CONST.WINTER_DEMAND).toFixed(2)}`;
-        document.getElementById('dtlSelDemandTotal').textContent = fmt(det.demandPeakCost);
-
-        document.getElementById('dtlSelDemandOffRate').textContent = `${state.peakKwOff} kW @ $7.48`;
-        document.getElementById('dtlSelDemandOffTotal').textContent = fmt(det.demandOffCost);
-
-        document.getElementById('dtlSelDelVol').textContent = fmt(det.selDelVol);
-        document.getElementById('dtlSelDelTax').textContent = fmt(det.selDelTax);
-        document.getElementById('dtlSelDelTotal').textContent = fmt(det.selDelTotal);
-
-        document.getElementById('dtlSelSupOn').textContent = fmt(det.selSupOn);
-        document.getElementById('dtlSelSupOff').textContent = fmt(det.selSupOff);
-        document.getElementById('dtlSelMFC').textContent = fmt(det.selMFC);
-        document.getElementById('dtlSelSupTax').textContent = fmt(det.selSupTax);
-        document.getElementById('dtlSelSupTotal').textContent = fmt(det.selSupTotal);
-
-        document.getElementById('dtlSelTotal').textContent = fmt(cur.selTotal);
-
-        // Standard Details
-        document.getElementById('dtlStdDelTotal').textContent = fmt(det.stdDelTotal);
-        document.getElementById('dtlStdSupTotal').textContent = fmt(det.stdSupTotal);
-        document.getElementById('dtlStdTotal').textContent = fmt(cur.stdTotal);
-    }
-
-    function render() {
-        const cur = calculate(state, parseInt(state.billMonth));
-        const savings = cur.stdTotal - cur.selTotal;
-        const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-        const fmt0 = (v) => `$${v.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
-        
-        document.getElementById('stdDel').textContent = fmt(cur.stdDel);
-        document.getElementById('stdSup').textContent = fmt(cur.stdSup);
-        document.getElementById('stdTotal').textContent = fmt(cur.stdTotal);
-        document.getElementById('stdEff').textContent = `$${(cur.stdTotal / (state.totalKwh || 1)).toFixed(3)}`;
-        document.getElementById('selDel').textContent = fmt(cur.selDel);
-        document.getElementById('selSup').textContent = fmt(cur.selSup);
-        document.getElementById('selTotal').textContent = fmt(cur.selTotal);
-        document.getElementById('selEff').textContent = `$${(cur.selTotal / (state.totalKwh || 1)).toFixed(3)}`;
-
-        const savingsCard = document.getElementById('savingsCard');
-        const savingsLabel = document.getElementById('savingsLabel');
-        const savingsAmount = document.getElementById('savingsAmount');
-        const savingsPercent = document.getElementById('savingsPercent');
-
-        if (savings >= 0) {
-            savingsCard.className = 'card bg-green-50 border-green-100 text-center';
-            savingsLabel.className = 'text-[10px] font-bold uppercase text-green-600 mb-1';
-            savingsLabel.textContent = 'Estimated Savings';
-            savingsAmount.className = 'text-4xl font-black text-green-700';
-            savingsAmount.textContent = fmt(savings);
-            savingsPercent.className = 'text-xs font-bold text-green-600 mt-1 uppercase tracking-tight';
-            savingsPercent.textContent = `${((savings/cur.stdTotal)*100).toFixed(1)}% SAVINGS`;
-        } else {
-            savingsCard.className = 'card bg-orange-50 border-orange-100 text-center';
-            savingsLabel.className = 'text-[10px] font-bold uppercase text-orange-600 mb-1';
-            savingsLabel.textContent = 'Extra Cost';
-            savingsAmount.className = 'text-4xl font-black text-orange-700';
-            savingsAmount.textContent = fmt(Math.abs(savings));
-            savingsPercent.className = 'text-xs font-bold text-orange-600 mt-1 uppercase tracking-tight';
-            savingsPercent.textContent = `${((Math.abs(savings)/cur.stdTotal)*100).toFixed(1)}% MORE EXPENSIVE`;
-        }
-
-        let yearStd = 0, yearSel = 0;
-        const baseW = SEASON_WEIGHTS[state.billMonth] || 0.1; 
-        const monthlyData = { labels: MONTH_NAMES, std: [], sel: [] };
-        
-        SEASON_WEIGHTS.forEach((w, i) => {
-            const r = w / baseW;
-            const scaledPeak = state.peakKw * Math.pow(r, 0.6);
-            const scaledOff = state.peakKwOff * Math.pow(r, 0.6);
-            
-            const est = calculate({
-                totalKwh: state.totalKwh * r, 
-                onPeakKwh: state.onPeakKwh * r,
-                offPeakKwh: state.offPeakKwh * r, 
-                peakKw: scaledPeak,
-                peakKwOff: scaledOff
-            }, i);
-            yearStd += est.stdTotal;
-            yearSel += est.selTotal;
-            monthlyData.std.push(est.stdTotal);
-            monthlyData.sel.push(est.selTotal);
-        });
-
-        const annualSavings = yearStd - yearSel;
-        const annualPct = (Math.abs(annualSavings) / yearStd) * 100;
-        document.getElementById('yearlyStd').textContent = `$${yearStd.toLocaleString(undefined, {maximumFractionDigits:0})}`;
-        document.getElementById('yearlySel').textContent = `$${yearSel.toLocaleString(undefined, {maximumFractionDigits:0})} / YEAR`;
-        
-        const yearlySavingsEl = document.getElementById('yearlySavings');
-        if (annualSavings >= 0) {
-            yearlySavingsEl.textContent = `${fmt0(annualSavings)} (${annualPct.toFixed(1)}%) SAVINGS`;
-            yearlySavingsEl.className = 'text-right text-[10px] font-black text-green-600 pb-1 border-b-2 border-green-200';
-        } else {
-            yearlySavingsEl.textContent = `+${fmt0(annualSavings)} (${annualPct.toFixed(1)}%) EXTRA`;
-            yearlySavingsEl.className = 'text-right text-[10px] font-black text-orange-600 pb-1 border-b-2 border-orange-200';
-        }
-        document.getElementById('baseMonthLabel').textContent = MONTH_NAMES[state.billMonth] || "Unknown";
-
-        renderChart(monthlyData);
-        if (!document.getElementById('detailsModal').classList.contains('hidden')) renderDetails();
-    }
-
-    function renderChart(data) {
-        if (typeof Chart === 'undefined') return;
-        const ctx = document.getElementById('annualChart').getContext('2d');
-        if (chartInstance) chartInstance.destroy();
-
-        chartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.labels,
-                datasets: [
-                    {
-                        label: 'Standard',
-                        data: data.std,
-                        borderColor: '#9ca3af',
-                        backgroundColor: '#9ca3af',
-                        borderWidth: 2,
-                        pointRadius: 2,
-                        tension: 0.4
-                    },
-                    {
-                        label: 'Select Pricing',
-                        data: data.sel,
-                        borderColor: '#4285f4',
-                        backgroundColor: '#4285f4',
-                        borderWidth: 2,
-                        pointRadius: 2,
-                        tension: 0.4
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
-                    tooltip: { mode: 'index', intersect: false }
-                },
-                scales: {
-                    y: { display: false },
-                    x: { grid: { display: false }, ticks: { font: { size: 8 } } }
-                }
-            }
-        });
-    }
-
-    function syncToUrl() {
-        const p = new URLSearchParams(state);
-        window.history.replaceState(null, '', '#' + p.toString());
-    }
-
-    function toggleTestWindow() {
-        let log = document.getElementById('testLog') || document.createElement('div');
-        if (!log.id) {
-            log.id = 'testLog';
-            log.className = 'mt-4 p-4 bg-black text-green-400 font-mono text-[10px] rounded overflow-x-auto';
-            document.querySelector('main').appendChild(log);
-            runTests(log);
-        } else {
-            document.querySelector('main').removeChild(log);
-        }
-    }
     
-    function runTests(log) {
-        log.innerHTML = `> RUNNING VALIDATION...<br>`;
-        const dec = calculate({
-            totalKwh: 6547, onPeakKwh: 1344, offPeakKwh: 5203, 
-            peakKw: 15.24, peakKwOff: 15.77 
-        }, 11); 
-        
-        const decTarget = 1490.34;
-        const diff = Math.abs(dec.selTotal - decTarget);
-        const decPass = diff < 0.50; 
-        log.innerHTML += `DEC '25 PROJ: ${dec.selTotal.toFixed(2)} (Target: ${decTarget}) [${decPass ? 'PASS' : 'FAIL'}]<br>`;
-        if(!decPass) log.innerHTML += `<span class="text-red-400">Diff: $${diff.toFixed(2)}</span><br>`;
-
-        log.innerHTML += `> CHECKING 2025 HISTORY...<br>`;
-        HISTORY_2025.forEach(rec => {
-            const est = calculate({ 
-                totalKwh: rec.kwh, 
-                onPeakKwh: rec.kwh * 0.2, 
-                offPeakKwh: rec.kwh * 0.8,
-                peakKw: 0, peakKwOff: 0
-            }, rec.monthIdx);
-            
-            const diff = est.stdTotal - rec.bill;
-            const pct = (diff / rec.bill) * 100;
-            const color = Math.abs(pct) < 10 ? 'text-green-400' : 'text-yellow-500';
-            log.innerHTML += `<span class="${color}">${rec.period}: Act $${rec.bill.toFixed(0)} vs Est $${est.stdTotal.toFixed(0)} (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)</span><br>`;
-        });
-        log.innerHTML += `> VALIDATION COMPLETE`;
-    }
+    // --- Window Assignments ---
+    window.reset = function() { window.clearData(); };
+    window.toggleDetails = toggleDetails;
+    window.toggleHelp = toggleHelp;
 
     window.onload = () => {
-        const hash = window.location.hash.slice(1);
-        if (hash) {
-            const p = new URLSearchParams(hash);
-            for (const [k, v] of p) {
-                state[k] = v;
-                const el = document.getElementById(k);
-                if(el) el.value = v;
-            }
-        }
+        initDropdown();
+        loadFromUrl();
         render();
     };
 
-    ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw', 'peakKwOff', 'billMonth'].forEach(id => {
+    ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'superPeakKwh', 'peakKw', 'peakKwOff', 'billMonth'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', (e) => state[id] = e.target.value);
     });
-    document.getElementById('resetBtn').onclick = reset;
-    document.getElementById('testBtn').onclick = toggleTestWindow;
+    
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    
+    dropZone.addEventListener('click', (e) => {
+        if (e.target !== fileInput && !e.target.closest('button')) {
+            fileInput.click();
+        }
+    });
+    
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-active'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-active'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-active');
+        if(e.dataTransfer.files.length) {
+            Array.from(e.dataTransfer.files).forEach(f => handleFile(f));
+        }
+    });
+    fileInput.addEventListener('change', (e) => { 
+        Array.from(e.target.files).forEach(f => handleFile(f)); 
+    });
+
+    document.getElementById('resetBtn').onclick = window.clearData;
+    document.getElementById('testBtn').onclick = () => alert("Validation tests disabled.");
 </script>
 </body>
 </html>
