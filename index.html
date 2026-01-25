@@ -8,7 +8,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         :root { --google-blue: #4285f4; }
-        /* Removed @apply rules which break in CDN mode */
         .card { background-color: white; padding: 1.5rem; border-radius: 0.75rem; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); border: 1px solid #f3f4f6; }
     </style>
 </head>
@@ -41,24 +40,24 @@
                 </div>
                 <div class="col-span-2">
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Total Energy (kWh)</label>
-                    <input type="number" id="totalKwh" value="6547" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-lg">
+                    <input type="number" id="totalKwh" value="3250" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-lg">
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">On-Peak kWh</label>
-                    <input type="number" id="onPeakKwh" value="1344" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                    <input type="number" id="onPeakKwh" value="666" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Off-Peak kWh</label>
-                    <input type="number" id="offPeakKwh" value="5203" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                    <input type="number" id="offPeakKwh" value="2584" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
                 </div>
                 
                 <div>
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Peak Demand (kW)</label>
-                    <input type="number" id="peakKw" value="15.24" step="0.01" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                    <input type="number" id="peakKw" value="7.6" step="0.1" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Off-Peak Demand (kW)</label>
-                    <input type="number" id="peakKwOff" value="15.77" step="0.01" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                    <input type="number" id="peakKwOff" value="7.9" step="0.1" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
                 </div>
             </div>
         </section>
@@ -135,7 +134,11 @@
     </main>
 
     <footer class="py-8 text-center space-y-4">
-        <button id="testBtn" class="text-[10px] text-gray-300 hover:text-gray-500 underline">Run Validation Tests</button>
+        <div class="flex justify-center gap-4 text-[10px] text-gray-300">
+            <button id="resetBtn" class="hover:text-gray-500 underline">Reset to Defaults</button>
+            <span>|</span>
+            <button id="testBtn" class="hover:text-gray-500 underline">Run Validation Tests</button>
+        </div>
         <div class="flex flex-col items-center gap-2 border-t border-gray-100 pt-6">
             <a href="https://github.com/tulrich/powerpricing" target="_blank" class="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-800">
                 <span>View on GitHub</span>
@@ -255,7 +258,7 @@
     const SEASON_WEIGHTS = [0.144, 0.124, 0.076, 0.048, 0.030, 0.041, 0.054, 0.038, 0.033, 0.050, 0.094, 0.171];
     const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-    /** @const Actual 2025 Utility Bills */
+    /** @const Actual 2025 Utility Bills (For Standard Plan Validation) */
     const HISTORY_2025 = [
         { date: "2/10/2025", period: "jan-feb", kwh: 5729, bill: 1890.57, monthIdx: 0 },
         { date: "3/12/2025", period: "feb-mar", kwh: 4016, bill: 1355.00, monthIdx: 1 },
@@ -297,9 +300,13 @@
 
     let chartInstance = null;
 
-    const state = new Proxy({
-        totalKwh: 6547, onPeakKwh: 1344, offPeakKwh: 5203, peakKw: 15.24, peakKwOff: 15.77, billMonth: 11
-    }, {
+    // Use roughly half the user's Dec 2025 profile as defaults
+    const DEFAULT_STATE = {
+        totalKwh: 3250, onPeakKwh: 666, offPeakKwh: 2584, 
+        peakKw: 7.6, peakKwOff: 7.9, billMonth: 11
+    };
+
+    const state = new Proxy({ ...DEFAULT_STATE }, {
         set(target, prop, value) {
             const num = parseFloat(value);
             target[prop] = isNaN(num) ? 0 : num;
@@ -329,6 +336,25 @@
         } else {
             modal.classList.add('hidden');
         }
+    };
+
+    window.reset = function() {
+        // Update DOM inputs
+        Object.keys(DEFAULT_STATE).forEach(key => {
+            const el = document.getElementById(key);
+            if(el) el.value = DEFAULT_STATE[key];
+        });
+        
+        // Update State
+        Object.assign(state, DEFAULT_STATE);
+        
+        // Clear URL params (remove hash)
+        history.replaceState(null, '', window.location.pathname);
+        
+        // Force rendering since Proxy set via Object.assign is subtle with dependent fields
+        document.getElementById('onPeakKwh').value = state.onPeakKwh;
+        document.getElementById('offPeakKwh').value = state.offPeakKwh;
+        render();
     };
 
     function calculate(usage, monthIdx) {
@@ -444,7 +470,7 @@
         if (savings >= 0) {
             savingsCard.className = 'card bg-green-50 border-green-100 text-center';
             savingsLabel.className = 'text-[10px] font-bold uppercase text-green-600 mb-1';
-            savingsLabel.textContent = 'Estimated Savings (please see disclaimer)';
+            savingsLabel.textContent = 'Estimated Savings';
             savingsAmount.className = 'text-4xl font-black text-green-700';
             savingsAmount.textContent = fmt(savings);
             savingsPercent.className = 'text-xs font-bold text-green-600 mt-1 uppercase tracking-tight';
@@ -452,7 +478,7 @@
         } else {
             savingsCard.className = 'card bg-orange-50 border-orange-100 text-center';
             savingsLabel.className = 'text-[10px] font-bold uppercase text-orange-600 mb-1';
-            savingsLabel.textContent = 'Extra Cost (please see disclaimer)';
+            savingsLabel.textContent = 'Extra Cost';
             savingsAmount.className = 'text-4xl font-black text-orange-700';
             savingsAmount.textContent = fmt(Math.abs(savings));
             savingsPercent.className = 'text-xs font-bold text-orange-600 mt-1 uppercase tracking-tight';
@@ -609,6 +635,7 @@
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', (e) => state[id] = e.target.value);
     });
+    document.getElementById('resetBtn').onclick = reset;
     document.getElementById('testBtn').onclick = toggleTestWindow;
 </script>
 </body>
