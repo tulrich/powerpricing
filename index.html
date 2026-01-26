@@ -203,7 +203,7 @@
             <li>Scroll down to find <strong>"Green Button | Download my data"</strong>.</li>
             <li>Select "Export usage" (for detailed interval data) or "Bill Totals".</li>
             <li>Choose either <strong>CSV</strong> or <strong>XML</strong> format.</li>
-	    <li>Choose a long time interval if you can. Though the ConEd website has a limit of one year per file. You can upload multiple files into this app and the data will get merged together.</li>
+	    <li>Choose a long time interval if you can - up to 1 year. You can also upload multiple files into this app and the data will get merged together.</li>
         </ol>
         <div class="text-center">
             <button onclick="window.toggleHelp(event)" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold py-2 px-4 rounded-lg">Got it</button>
@@ -317,11 +317,16 @@
         const demandRate = isSummer ? CONST.SUMMER_DEMAND : CONST.WINTER_DEMAND;
         const stdSupplyRate = isSummer ? CONST.SUPPLY_STD_SUMMER : CONST.SUPPLY_STD_WINTER;
         
+        // Standard Plan Calculations
         const stdFixed = CONST.SC1_STD_FIXED;
         const stdDelVol = usage.totalKwh * (CONST.STD_DELIVERY_KWH + CONST.SBC_RATE);
         const stdDelTotal = (stdFixed + stdDelVol) * CONST.TAX_DELIVERY;
-        const stdSupTotal = ((usage.totalKwh * stdSupplyRate) + (usage.totalKwh * CONST.MFC_RATE)) * CONST.TAX_SUPPLY;
         
+        const stdSupVol = usage.totalKwh * stdSupplyRate;
+        const stdMFC = usage.totalKwh * CONST.MFC_RATE;
+        const stdSupTotal = (stdSupVol + stdMFC) * CONST.TAX_SUPPLY;
+        
+        // Select Plan Calculations
         const selFixed = CONST.SC1_SEL_FIXED;
         const demandPeakCost = usage.peakKw * demandRate;
         const demandOffCost = usage.peakKwOff * CONST.DEMAND_OFF_PEAK;
@@ -331,15 +336,16 @@
         const selSupOn = usage.onPeakKwh * CONST.SUPPLY_SEL_ON;
         const selSupOff = usage.offPeakKwh * CONST.SUPPLY_SEL_OFF;
         const selSupSuper = isSummer ? (usage.superPeakKwh * CONST.SUPPLY_SUPER_PEAK) : 0;
-        const selSupTotal = (selSupOn + selSupOff + selSupSuper + (usage.totalKwh * CONST.MFC_RATE)) * CONST.TAX_SUPPLY;
+        const selMFC = usage.totalKwh * CONST.MFC_RATE;
+        const selSupTotal = (selSupOn + selSupOff + selSupSuper + selMFC) * CONST.TAX_SUPPLY;
 
         return { 
             stdTotal: stdDelTotal + stdSupTotal, selTotal: selDelTotal + selSupTotal,
             stdDel: stdDelTotal, stdSup: stdSupTotal, selDel: selDelTotal, selSup: selSupTotal,
             details: {
                 selFixed, demandPeakCost, demandOffCost, selDelVol, 
-                selDelTotal, selSupOn, selSupOff, selSupSuper, selMFC: usage.totalKwh * CONST.MFC_RATE, selSupTotal,
-                stdDelTotal, stdSupTotal
+                selDelTotal, selSupOn, selSupOff, selSupSuper, selMFC, selSupTotal,
+                stdFixed, stdDelVol, stdSupVol, stdMFC, stdDelTotal, stdSupTotal
             }
         };
     }
@@ -351,6 +357,13 @@
         let monthIdx = state.billMonth === 'rolling' ? 0 : parseInt(state.billMonth);
         const isSum = (monthIdx >= 5 && monthIdx <= 8);
         let superPeakRow = isSum ? `<div class="flex justify-between text-orange-700 bg-orange-50 p-1 rounded"><span>Super-Peak Supply</span><span class="font-mono">${fmt(det.selSupSuper)}</span></div>` : '';
+
+        // Standard Rates for display
+        const stdSupplyRate = isSum ? CONST.SUPPLY_STD_SUMMER : CONST.SUPPLY_STD_WINTER;
+        const stdDeliveryRate = CONST.STD_DELIVERY_KWH + CONST.SBC_RATE;
+
+        // Calculate Standard Plan Tax/Fees (Difference between Total and the raw components)
+        const stdTax = (cur.stdDel - det.stdFixed - det.stdDelVol) + (cur.stdSup - det.stdSupVol - det.stdMFC);
 
         const html = `
             <div>
@@ -381,83 +394,100 @@
             </div>
             <div class="mt-4">
                 <h4 class="text-xs font-bold uppercase text-gray-400 mb-2 border-b border-gray-100 pb-1">Standard Plan</h4>
-                <!-- TODO itemize supply and delivery charges here -->
-                <!-- TODO show taxes, fees etc for standard plan -->
-                <div class="flex justify-between text-sm font-bold text-gray-800"><span>Total</span><span>${fmt(cur.stdTotal)}</span></div>
+                <div class="space-y-2 text-sm text-gray-600">
+                    <div class="bg-gray-50/50 p-2 rounded-lg space-y-1 mb-2">
+                        <div class="flex justify-between"><span>Basic Service Charge</span><span class="font-mono">${fmt(det.stdFixed)}</span></div>
+                        <div class="flex justify-between">
+                            <span>Delivery</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(state.totalKwh)} kWh @ $${stdDeliveryRate.toFixed(3)}</span>
+                            <span class="font-mono">${fmt(det.stdDelVol)}</span>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex justify-between">
+                            <span>Supply Charge</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(state.totalKwh)} kWh @ $${stdSupplyRate.toFixed(3)}</span>
+                            <span class="font-mono">${fmt(det.stdSupVol)}</span>
+                        </div>
+                        <div class="flex justify-between"><span>Merchant Function Charge</span><span class="font-mono">${fmt(det.stdMFC)}</span></div>
+                        <div class="flex justify-between text-gray-400 italic"><span>Taxes & Surcharges</span><span class="font-mono">${fmt(stdTax)}</span></div>
+                    </div>
+                    <div class="flex justify-between font-black text-lg text-gray-800 pt-1 border-t mt-2"><span>Total Bill</span><span>${fmt(cur.stdTotal)}</span></div>
+                </div>
             </div>`;
-        const content = document.getElementById('detailsContent');
-        if(content) content.innerHTML = html;
-    }
-
-    function renderAnnualChart() {
-        if (typeof Chart === 'undefined') return;
-        const ctx = document.getElementById('annualChart').getContext('2d');
-        if (chartInstance) chartInstance.destroy();
-
-        let refWeight = SEASON_WEIGHTS[11];
-        if (state.billMonth !== 'rolling' && !isNaN(parseInt(state.billMonth))) {
-            refWeight = SEASON_WEIGHTS[parseInt(state.billMonth)];
+            const content = document.getElementById('detailsContent');
+            if(content) content.innerHTML = html;
         }
-        
-        let yStd=0, ySel=0;
-        let chartLabels = [], chartStd = [], chartSel = [], chartColors = [];
 
-        MONTH_NAMES.forEach((m, i) => {
-            let dataForMonth;
-            let isReal = false;
+        function renderAnnualChart() {
+            if (typeof Chart === 'undefined') return;
+            const ctx = document.getElementById('annualChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
 
-            if (parsedMonthlyData[i] && parsedMonthlyData[i].days >= 20) {
-                dataForMonth = parsedMonthlyData[i];
-                isReal = true;
-            } else {
-                const r = SEASON_WEIGHTS[i] / refWeight;
-                dataForMonth = {
-                    totalKwh: state.totalKwh * r,
-                    onPeakKwh: state.onPeakKwh * r,
-                    offPeakKwh: state.offPeakKwh * r,
-                    superPeakKwh: state.superPeakKwh * r,
-                    peakKw: state.peakKw * Math.pow(r, 0.6),
-                    peakKwOff: state.peakKwOff * Math.pow(r, 0.6)
-                };
+            let refWeight = SEASON_WEIGHTS[11];
+            if (state.billMonth !== 'rolling' && !isNaN(parseInt(state.billMonth))) {
+                refWeight = SEASON_WEIGHTS[parseInt(state.billMonth)];
             }
-
-            const est = calculate(dataForMonth, i.toString());
-            yStd += est.stdTotal; 
-            ySel += est.selTotal;
+        
+            let yStd=0, ySel=0;
+            let chartLabels = [], chartStd = [], chartSel = [], chartColors = [];
+    
+            MONTH_NAMES.forEach((m, i) => {
+                let dataForMonth;
+                let isReal = false;
+    
+                if (parsedMonthlyData[i] && parsedMonthlyData[i].days >= 20) {
+                    dataForMonth = parsedMonthlyData[i];
+                    isReal = true;
+                } else {
+                    const r = SEASON_WEIGHTS[i] / refWeight;
+                    dataForMonth = {
+                        totalKwh: state.totalKwh * r,
+                        onPeakKwh: state.onPeakKwh * r,
+                        offPeakKwh: state.offPeakKwh * r,
+                        superPeakKwh: state.superPeakKwh * r,
+                        peakKw: state.peakKw * Math.pow(r, 0.6),
+                        peakKwOff: state.peakKwOff * Math.pow(r, 0.6)
+                    };
+                }
+    
+                const est = calculate(dataForMonth, i.toString());
+                yStd += est.stdTotal; 
+                ySel += est.selTotal;
+                
+                chartLabels.push(m);
+                chartStd.push(est.stdTotal);
+                chartSel.push(est.selTotal);
+                chartColors.push(isReal ? '#4285f4' : '#d1d5db'); 
+            });
             
-            chartLabels.push(m);
-            chartStd.push(est.stdTotal);
-            chartSel.push(est.selTotal);
-            chartColors.push(isReal ? '#4285f4' : '#d1d5db'); 
-        });
-        
-        const setTxt = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
-        setTxt('yearlyStd', `$${yStd.toLocaleString(undefined, {maximumFractionDigits:0})}`);
-        setTxt('yearlySel', `$${ySel.toLocaleString(undefined, {maximumFractionDigits:0})} / YEAR`);
-        const ySav = yStd - ySel;
-        const annualPct = (Math.abs(ySav) / yStd) * 100;
-        setTxt('yearlySavings', `${ySav>=0?'-':'+'}$${Math.abs(ySav).toLocaleString(undefined, {maximumFractionDigits:0})} (${annualPct.toFixed(1)}%) ${ySav>=0?'SAVINGS':'EXTRA'}`);
-        
-        const realCount = Object.keys(parsedMonthlyData).filter(k=>parsedMonthlyData[k].days>=20).length;
-        setTxt('baseMonthLabel', realCount > 0 ? `${realCount} Verified Months + Estimates` : (MONTH_NAMES[state.billMonth] || "Estimated"));
-
-        chartInstance = new Chart(ctx, {
-            type: 'bar',
-            data: { 
-                labels: chartLabels, 
-                datasets: [
-                    { label: 'Standard', data: chartStd, backgroundColor: '#9ca3af', order: 2 },
-                    { label: 'Select (Verified)', data: chartSel, backgroundColor: chartColors.map(c => c === '#4285f4' ? '#4285f4' : 'transparent'), borderColor: '#4285f4', borderWidth: {top:0, right:0, bottom:0, left:0}, order: 1 },
-                    { label: 'Select (Estimated)', data: chartSel, backgroundColor: chartColors.map(c => c === '#d1d5db' ? '#d1d5db' : 'transparent'), order: 3 }
-                ] 
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: true, labels: { boxWidth: 10, font: { size: 10 }, filter: (l) => l.text !== 'Select (Verified)' } }, tooltip: { mode: 'index', intersect: false } },
-                scales: { x: { stacked: false, grid: { display: false } }, y: { beginAtZero: true, display: false } }
-            }
-        });
-    }
+            const setTxt = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
+            setTxt('yearlyStd', `$${yStd.toLocaleString(undefined, {maximumFractionDigits:0})}`);
+            setTxt('yearlySel', `$${ySel.toLocaleString(undefined, {maximumFractionDigits:0})} / YEAR`);
+            const ySav = yStd - ySel;
+            const annualPct = (Math.abs(ySav) / yStd) * 100;
+            setTxt('yearlySavings', `${ySav>=0?'-':'+'}$${Math.abs(ySav).toLocaleString(undefined, {maximumFractionDigits:0})} (${annualPct.toFixed(1)}%) ${ySav>=0?'SAVINGS':'EXTRA'}`);
+            
+            const realCount = Object.keys(parsedMonthlyData).filter(k=>parsedMonthlyData[k].days>=20).length;
+            setTxt('baseMonthLabel', realCount > 0 ? `${realCount} Verified Months + Estimates` : (MONTH_NAMES[state.billMonth] || "Estimated"));
+    
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: { 
+                    labels: chartLabels, 
+                    datasets: [
+                        { label: 'Standard', data: chartStd, backgroundColor: '#9ca3af', order: 2 },
+                        { label: 'Select (Verified)', data: chartSel, backgroundColor: chartColors.map(c => c === '#4285f4' ? '#4285f4' : 'transparent'), borderColor: '#4285f4', borderWidth: {top:0, right:0, bottom:0, left:0}, order: 1 },
+                        { label: 'Select (Estimated)', data: chartSel, backgroundColor: chartColors.map(c => c === '#d1d5db' ? '#d1d5db' : 'transparent'), order: 3 }
+                    ] 
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: true, labels: { boxWidth: 10, font: { size: 10 }, filter: (l) => l.text !== 'Select (Verified)' } }, tooltip: { mode: 'index', intersect: false } },
+                    scales: { x: { stacked: false, grid: { display: false } }, y: { beginAtZero: true, display: false } }
+                }
+            });
+        }
 
     function renderHistoryChart(monthlyData) {
         if (typeof Chart === 'undefined') return;
