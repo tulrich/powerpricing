@@ -185,7 +185,7 @@
             </div>
             <div id="detailsContent" class="space-y-6"></div>
             <div class="mt-6 bg-gray-50 p-3 rounded-lg text-[10px] text-gray-500 leading-snug">
-                <strong>How Select works:</strong> The "Demand Charge" is calculated from the average of your three highest 1-hour demands. During summer (Jun-Sept), usage between 2-6pm is billed at a higher "Super-Peak" rate.
+                <strong>How Select works:</strong> The "Demand Charge" is calculated from the average of your three highest 1-hour demands, for Peak and Off Peak time ranges. During summer (Jun-Sept), usage between 2-6pm is billed at a higher "Super-Peak" rate.
             </div>
         </div>
     </div>
@@ -381,6 +381,8 @@
             </div>
             <div class="mt-4">
                 <h4 class="text-xs font-bold uppercase text-gray-400 mb-2 border-b border-gray-100 pb-1">Standard Plan</h4>
+                <!-- TODO itemize supply and delivery charges here -->
+                <!-- TODO show taxes, fees etc for standard plan -->
                 <div class="flex justify-between text-sm font-bold text-gray-800"><span>Total</span><span>${fmt(cur.stdTotal)}</span></div>
             </div>`;
         const content = document.getElementById('detailsContent');
@@ -487,7 +489,8 @@
         if (!state.billMonth) state.billMonth = '11';
         const cur = calculate(state, state.billMonth);
         const savings = cur.stdTotal - cur.selTotal;
-        const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        const fmt0 = (v) => `$${v.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
         
         const setTxt = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
         
@@ -515,7 +518,7 @@
             sl.className = 'text-[10px] font-bold uppercase text-green-600 mb-1';
             sl.textContent = 'Estimated Savings';
             sa.className = 'text-4xl font-black text-green-700';
-            sa.textContent = fmt(savings);
+            sa.textContent = fmt0(savings);
             sp.className = 'text-xs font-bold text-green-600 mt-1 uppercase tracking-tight';
             sp.textContent = `${((savings/cur.stdTotal)*100).toFixed(1)}% SAVINGS`;
         } else {
@@ -523,7 +526,7 @@
             sl.className = 'text-[10px] font-bold uppercase text-orange-600 mb-1';
             sl.textContent = 'Extra Cost';
             sa.className = 'text-4xl font-black text-orange-700';
-            sa.textContent = fmt(Math.abs(savings));
+            sa.textContent = fmt0(Math.abs(savings));
             sp.className = 'text-xs font-bold text-orange-600 mt-1 uppercase tracking-tight';
             sp.textContent = `${((Math.abs(savings)/cur.stdTotal)*100).toFixed(1)}% MORE EXPENSIVE`;
         }
@@ -623,12 +626,26 @@
             const m = months[mIdx];
             const readings = m.raw.sort((a,b) => a.ts - b.ts);
             const dayPeaks = { on: {}, off: {} };
+	    const msPerHour = 3600000;
 
-            for (let i = 0; i < readings.length - 3; i++) {
-                const window = readings.slice(i, i+4);
-                if (window[3].ts - window[0].ts > 3600000) continue; 
+	    let nextI = 0;
+            for (let i = 0; i < readings.length; i = nextI) {
+		nextI = i + 1;
+
+		// Compute the index of the hour that this sample corresponds to.
+		const hourStartIndex = Math.floor(readings[i].ts / msPerHour);
+		// Slide forward to select samples in the same hour.
+		while (nextI < readings.length) {
+		    const hourIndex = Math.floor(readings[nextI].ts / msPerHour);
+		    if (hourIndex != hourStartIndex) {
+			break;
+		    }
+		    nextI++;
+		}
+                const window = readings.slice(i, nextI);
+
                 const avgKw = window.reduce((a, b) => a + b.kwh, 0); 
-                const midTime = new Date(window[1].ts);
+                const midTime = new Date(window[Math.floor((window.length - 1) / 2)].ts);
                 const hour = midTime.getHours();
                 const day = midTime.getDay();
                 const isPeak = (day >= 1 && day <= 5) && (hour >= 8 && hour < 22);
