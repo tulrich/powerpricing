@@ -517,13 +517,19 @@
             data: {
                 labels: labels,
                 datasets: [
-                    { label: 'On-Peak', data: keys.map(k => monthlyData[k].onPeakKwh), backgroundColor: '#fcd34d', stack: '0' },
-                    { label: 'Off-Peak', data: keys.map(k => monthlyData[k].offPeakKwh), backgroundColor: '#93c5fd', stack: '0' }
+                    { label: 'On-Peak kWh', data: keys.map(k => monthlyData[k].onPeakKwh), backgroundColor: '#fcd34d', stack: '0', yAxisID: 'y', order: 2 },
+                    { label: 'Off-Peak kWh', data: keys.map(k => monthlyData[k].offPeakKwh), backgroundColor: '#93c5fd', stack: '0', yAxisID: 'y', order: 2 },
+                    { label: 'Peak Demand (kW)', data: keys.map(k => monthlyData[k].peakKw), type: 'line', borderColor: '#f59e0b', backgroundColor: '#f59e0b', borderWidth: 2, pointRadius: 4, pointStyle: 'circle', yAxisID: 'y1', tension: 0.1, order: 1 },
+                    { label: 'Off-Peak Demand (kW)', data: keys.map(k => monthlyData[k].peakKwOff), type: 'line', borderColor: '#3b82f6', backgroundColor: '#3b82f6', borderWidth: 2, pointRadius: 4, pointStyle: 'circle', yAxisID: 'y1', tension: 0.1, order: 1 }
                 ]
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
-                scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true } },
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: { stacked: true, position: 'left', title: { display: true, text: 'kWh', font: { size: 9 } } },
+                    y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'kW', font: { size: 9 } }, beginAtZero: true }
+                },
                 plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 8, font: { size: 9 } } } }
             }
         });
