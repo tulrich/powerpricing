@@ -377,8 +377,16 @@
                     </div>
                     <div class="space-y-1">
                         <div class="flex justify-between"><span>Delivery Subtotal</span><span class="font-mono">${fmt(det.selDelTotal)}</span></div>
-                        <div class="flex justify-between"><span>Supply (On-Peak)</span><span class="font-mono">${fmt(det.selSupOn)}</span></div>
-                        <div class="flex justify-between"><span>Supply (Off-Peak)</span><span class="font-mono">${fmt(det.selSupOff)}</span></div>
+                        <div class="flex justify-between">
+                            <span>Supply (On-Peak)</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(state.onPeakKwh)} kWh @ $${CONST.SUPPLY_SEL_ON.toFixed(5)}</span>
+                            <span class="font-mono">${fmt(det.selSupOn)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Supply (Off-Peak)</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(state.offPeakKwh)} kWh @ $${CONST.SUPPLY_SEL_OFF.toFixed(5)}</span>
+                            <span class="font-mono">${fmt(det.selSupOff)}</span>
+                        </div>
                         <div class="flex justify-between"><span>Merchant/Tax</span><span class="font-mono">${fmt(det.selMFC + (det.selSupTotal - det.selSupOn - det.selSupOff - det.selMFC))}</span></div>
                     </div>
                     <div class="flex justify-between font-black text-lg text-blue-700 pt-1 border-t mt-2"><span>Total Bill</span><span>${fmt(cur.selTotal)}</span></div>
