@@ -73,10 +73,6 @@
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Off-Peak kWh</label>
                     <input type="number" id="offPeakKwh" value="2584" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
                 </div>
-                <div class="col-span-2" id="superPeakRow" style="display: none;">
-                    <label class="block text-[10px] font-bold uppercase text-orange-600 mb-1">Super-Peak kWh (Summer)</label>
-                    <input type="number" id="superPeakKwh" value="0" class="w-full p-2 bg-orange-50 border border-orange-200 rounded-md font-mono text-sm text-orange-800">
-                </div>
                 
                 <div>
                     <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Peak Demand (kW)</label>
@@ -185,7 +181,7 @@
             </div>
             <div id="detailsContent" class="space-y-6"></div>
             <div class="mt-6 bg-gray-50 p-3 rounded-lg text-[10px] text-gray-500 leading-snug">
-                <strong>How Select works:</strong> The "Demand Charge" is calculated from the average of your three highest 1-hour demands, for Peak and Off Peak time ranges. During summer (Jun-Sept), usage between 2-6pm is billed at a higher "Super-Peak" rate.
+                <strong>How Select works:</strong> The "Demand Charge" is calculated from the average of your three highest 1-hour demands, for Peak and Off Peak time ranges. Peak is noon-8pm on weekdays.
             </div>
         </div>
     </div>
@@ -213,7 +209,7 @@
 
 <script type="module">
     // --- Constants & Config ---
-    const SEASON_WEIGHTS = [0.144, 0.124, 0.076, 0.048, 0.030, 0.041, 0.054, 0.038, 0.033, 0.050, 0.094, 0.171];
+    const SEASON_WEIGHTS = [0.175, 0.135, 0.082, 0.053, 0.032, 0.043, 0.058, 0.043, 0.039, 0.057, 0.109, 0.174];
     const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     
     const CONST = {
@@ -223,11 +219,11 @@
         WINTER_DEMAND: 19.50, SUMMER_DEMAND: 26.50, DEMAND_OFF_PEAK: 7.48,
         MFC_RATE: 0.003733, 
         SUPPLY_STD_WINTER: 0.136, SUPPLY_STD_SUMMER: 0.170, 
-        SUPPLY_SEL_ON: 0.22118, SUPPLY_SEL_OFF: 0.09952, SUPPLY_SUPER_PEAK: 0.3200 
+        SUPPLY_SEL_ON: 0.22118, SUPPLY_SEL_OFF: 0.09952,
     };
 
     const DEFAULT_STATE = {
-        totalKwh: 3250, onPeakKwh: 666, offPeakKwh: 2584, superPeakKwh: 0,
+        totalKwh: 3250, onPeakKwh: 666, offPeakKwh: 2584,
         peakKw: 7.6, peakKwOff: 7.9, billMonth: '11'
     };
 
@@ -283,11 +279,10 @@
             totalKwh: data.totalKwh,
             onPeakKwh: data.onPeakKwh,
             offPeakKwh: data.offPeakKwh,
-            superPeakKwh: data.superPeakKwh,
             peakKw: data.peakKw,
             peakKwOff: data.peakKwOff
         });
-        updateDOM(['totalKwh', 'onPeakKwh', 'offPeakKwh', 'superPeakKwh', 'peakKw', 'peakKwOff']);
+        updateDOM(['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw', 'peakKwOff']);
     }
 
     // --- State Proxy ---
@@ -335,16 +330,15 @@
 
         const selSupOn = usage.onPeakKwh * CONST.SUPPLY_SEL_ON;
         const selSupOff = usage.offPeakKwh * CONST.SUPPLY_SEL_OFF;
-        const selSupSuper = isSummer ? (usage.superPeakKwh * CONST.SUPPLY_SUPER_PEAK) : 0;
         const selMFC = usage.totalKwh * CONST.MFC_RATE;
-        const selSupTotal = (selSupOn + selSupOff + selSupSuper + selMFC) * CONST.TAX_SUPPLY;
+        const selSupTotal = (selSupOn + selSupOff + selMFC) * CONST.TAX_SUPPLY;
 
         return { 
             stdTotal: stdDelTotal + stdSupTotal, selTotal: selDelTotal + selSupTotal,
             stdDel: stdDelTotal, stdSup: stdSupTotal, selDel: selDelTotal, selSup: selSupTotal,
             details: {
                 selFixed, demandPeakCost, demandOffCost, selDelVol, 
-                selDelTotal, selSupOn, selSupOff, selSupSuper, selMFC, selSupTotal,
+                selDelTotal, selSupOn, selSupOff, selMFC, selSupTotal,
                 stdFixed, stdDelVol, stdSupVol, stdMFC, stdDelTotal, stdSupTotal
             }
         };
@@ -356,7 +350,6 @@
         const det = cur.details;
         let monthIdx = state.billMonth === 'rolling' ? 0 : parseInt(state.billMonth);
         const isSum = (monthIdx >= 5 && monthIdx <= 8);
-        let superPeakRow = isSum ? `<div class="flex justify-between text-orange-700 bg-orange-50 p-1 rounded"><span>Super-Peak Supply</span><span class="font-mono">${fmt(det.selSupSuper)}</span></div>` : '';
 
         // Standard Rates for display
         const stdSupplyRate = isSum ? CONST.SUPPLY_STD_SUMMER : CONST.SUPPLY_STD_WINTER;
@@ -386,8 +379,7 @@
                         <div class="flex justify-between"><span>Delivery Subtotal</span><span class="font-mono">${fmt(det.selDelTotal)}</span></div>
                         <div class="flex justify-between"><span>Supply (On-Peak)</span><span class="font-mono">${fmt(det.selSupOn)}</span></div>
                         <div class="flex justify-between"><span>Supply (Off-Peak)</span><span class="font-mono">${fmt(det.selSupOff)}</span></div>
-                        ${superPeakRow}
-                        <div class="flex justify-between"><span>Merchant/Tax</span><span class="font-mono">${fmt(det.selMFC + (det.selSupTotal - det.selSupOn - det.selSupOff - det.selSupSuper - det.selMFC))}</span></div>
+                        <div class="flex justify-between"><span>Merchant/Tax</span><span class="font-mono">${fmt(det.selMFC + (det.selSupTotal - det.selSupOn - det.selSupOff - det.selMFC))}</span></div>
                     </div>
                     <div class="flex justify-between font-black text-lg text-blue-700 pt-1 border-t mt-2"><span>Total Bill</span><span>${fmt(cur.selTotal)}</span></div>
                 </div>
@@ -445,7 +437,6 @@
                         totalKwh: state.totalKwh * r,
                         onPeakKwh: state.onPeakKwh * r,
                         offPeakKwh: state.offPeakKwh * r,
-                        superPeakKwh: state.superPeakKwh * r,
                         peakKw: state.peakKw * Math.pow(r, 0.6),
                         peakKwOff: state.peakKwOff * Math.pow(r, 0.6)
                     };
@@ -502,7 +493,6 @@
             data: {
                 labels: labels,
                 datasets: [
-                    { label: 'Super-Peak', data: keys.map(k => monthlyData[k].superPeakKwh), backgroundColor: '#ea580c', stack: '0' },
                     { label: 'On-Peak', data: keys.map(k => monthlyData[k].onPeakKwh), backgroundColor: '#fcd34d', stack: '0' },
                     { label: 'Off-Peak', data: keys.map(k => monthlyData[k].offPeakKwh), backgroundColor: '#93c5fd', stack: '0' }
                 ]
@@ -535,8 +525,6 @@
 
         let monthIdx = state.billMonth === 'rolling' ? 0 : parseInt(state.billMonth);
         const isSum = (monthIdx >= 5 && monthIdx <= 8);
-        const spr = document.getElementById('superPeakRow');
-        if(spr) spr.style.display = isSum ? 'block' : 'none';
 
         const card = document.getElementById('savingsCard');
         const sl = document.getElementById('savingsLabel');
@@ -570,7 +558,7 @@
             const parts = [];
             Object.keys(parsedMonthlyData).filter(k=>k!=='rolling').forEach(k => {
                 const d = parsedMonthlyData[k];
-                if(d.days > 5) parts.push(`${k},${d.totalKwh},${d.onPeakKwh},${d.offPeakKwh},${d.superPeakKwh},${d.peakKw},${d.peakKwOff},${d.days}`);
+                if(d.days > 5) parts.push(`${k},${d.totalKwh},${d.onPeakKwh},${d.offPeakKwh},${d.peakKw},${d.peakKwOff},${d.days}`);
             });
             window.location.hash = 'data=' + parts.join('|');
         } else {
@@ -588,8 +576,8 @@
                     const p = chunk.split(',').map(Number);
                     if(p.length >= 8) {
                         parsedMonthlyData[p[0]] = {
-                            totalKwh: p[1], onPeakKwh: p[2], offPeakKwh: p[3], superPeakKwh: p[4],
-                            peakKw: p[5], peakKwOff: p[6], days: p[7], label: MONTH_NAMES[p[0]]
+                            totalKwh: p[1], onPeakKwh: p[2], offPeakKwh: p[3],
+                            peakKw: p[4], peakKwOff: p[5], days: p[6], label: MONTH_NAMES[p[0]]
                         };
                     }
                 });
@@ -623,7 +611,7 @@
         intervals.forEach(i => {
             const date = new Date(i.ts);
             const mKey = date.getMonth(); 
-            if (!months[mKey]) months[mKey] = { raw: [], total: 0, onPeak: 0, offPeak: 0, superPeak: 0, days: new Set() };
+            if (!months[mKey]) months[mKey] = { raw: [], total: 0, onPeak: 0, offPeak: 0, days: new Set() };
             
             months[mKey].raw.push(i);
             months[mKey].days.add(date.toDateString());
@@ -634,13 +622,9 @@
             const isWeekday = (day >= 1 && day <= 5);
             const isSummer = (mKey >= 5 && mKey <= 8);
 
-            let bucket = 'off';
-            if (isWeekday) {
-                if (isSummer && hour >= 14 && hour < 18) bucket = 'super';
-                else if (hour >= 8 && hour < 22) bucket = 'on';
-            }
-            if (bucket === 'super') months[mKey].superPeak += i.kwh;
-            else if (bucket === 'on') months[mKey].onPeak += i.kwh;
+	    // TODO: also test for holidays. Holidays are off peak.
+            const onPeak = isWeekday && hour >= 8 && hour < 22;
+            if (onPeak) months[mKey].onPeak += i.kwh;
             else months[mKey].offPeak += i.kwh;
         });
 
@@ -688,7 +672,6 @@
                 totalKwh: Math.round(m.total),
                 onPeakKwh: Math.round(m.onPeak),
                 offPeakKwh: Math.round(m.offPeak),
-                superPeakKwh: Math.round(m.superPeak),
                 peakKw: parseFloat(getTop3Avg(dayPeaks.on).toFixed(2)),
                 peakKwOff: parseFloat(getTop3Avg(dayPeaks.off).toFixed(2)),
                 label: MONTH_NAMES[mIdx],
@@ -865,35 +848,41 @@
         render();
     };
 
-    ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'superPeakKwh', 'peakKw', 'peakKwOff', 'billMonth'].forEach(id => {
+    ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw', 'peakKwOff', 'billMonth'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', (e) => state[id] = e.target.value);
     });
     
     const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('fileInput');
-    
-    dropZone.addEventListener('click', (e) => {
-        if (e.target !== fileInput && !e.target.closest('button')) {
-            fileInput.click();
-        }
-    });
-    
-    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-active'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-active'));
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('drag-active');
-        if(e.dataTransfer.files.length) {
-            Array.from(e.dataTransfer.files).forEach(f => handleFile(f));
-        }
-    });
-    fileInput.addEventListener('change', (e) => { 
-        Array.from(e.target.files).forEach(f => handleFile(f)); 
-    });
+    if (dropZone) {
+        dropZone.addEventListener('click', (e) => {
+            if (e.target !== fileInput && !e.target.closest('button')) {
+                fileInput.click();
+            }
+        });
+        
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-active'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-active'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-active');
+            if(e.dataTransfer.files.length) {
+                Array.from(e.dataTransfer.files).forEach(f => handleFile(f));
+            }
+        });
+    }
 
-    document.getElementById('resetBtn').onclick = window.clearData;
-    document.getElementById('testBtn').onclick = () => alert("Validation tests disabled.");
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => { 
+            Array.from(e.target.files).forEach(f => handleFile(f)); 
+        });
+    }
+
+    const resetBtn = document.getElementById('resetBtn');
+    if (resetBtn) {
+        resetBtn.onclick = window.clearData;
+    }
 </script>
 </body>
 </html>

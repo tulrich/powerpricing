@@ -14,6 +14,9 @@ try {
         // Ensure we don't break on missing DOM elements during test setup
         // We will mock these in the test environment, but just in case
         
+        // Append exports for testing
+        jsContent += '\nexport { calculate, CONST, SEASON_WEIGHTS };';
+
         fs.mkdirSync(path.dirname(outputJsPath), { recursive: true });
         fs.writeFileSync(outputJsPath, jsContent);
         console.log('Successfully extracted embedded JS to ' + outputJsPath);

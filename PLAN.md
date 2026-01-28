@@ -28,10 +28,10 @@ Phase 2: Data Intelligence
       negative if usage is negative, so we need to clamp negative
       values in the bill calcuation.  It seems from my Select Pricing
       bill there are KWH "bank balances" for On Peak and Off Peak
-      buckets. So maybe in months where my PV production exceeds
+      buckets. So probably in months where my PV production exceeds
       consumption I would start having a "Cumulative Credit kWh" that
       would deduct from billed kWh in subsequent months.
-- [ ] Fix the bill summary data upload.
+- [ ] Fix the Bill Summary data upload.
 
 Phase 3: Improve Software
 
