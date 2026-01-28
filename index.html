@@ -358,11 +358,19 @@
         // Calculate Standard Plan Tax/Fees (Difference between Total and the raw components)
         const stdTax = (cur.stdDel - det.stdFixed - det.stdDelVol) + (cur.stdSup - det.stdSupVol - det.stdMFC);
 
+        // Calculate Select Plan Tax/Fees
+        const selTax = (cur.selDel - det.selFixed - det.demandPeakCost - det.demandOffCost - det.selDelVol) +
+            (cur.selSup - det.selSupOn - det.selSupOff - det.selMFC);
+
         const html = `
             <div>
                 <h4 class="text-xs font-bold uppercase text-blue-600 mb-2 border-b border-blue-100 pb-1">Select Pricing Plan</h4>
                 <div class="space-y-2 text-sm text-gray-600">
-                    <div class="bg-blue-50/50 p-2 rounded-lg space-y-1 mb-2">
+                    <div class="space-y-1">
+                        <div class="flex justify-between"><span>Basic Service Charge</span><span class="font-mono">${fmt(det.selFixed)}</span></div>
+                    </div>
+                    
+                    <div class="bg-blue-50/50 p-2 rounded-lg space-y-1 my-2">
                         <div class="flex justify-between text-[11px] font-bold text-blue-800 uppercase tracking-wider mb-1">Demand Charges</div>
                         <div class="flex justify-between">
                             <span>Peak Demand</span>
@@ -375,8 +383,14 @@
                             <span class="font-mono font-bold text-blue-700">${fmt(det.demandOffCost)}</span>
                         </div>
                     </div>
+
                     <div class="space-y-1">
-                        <div class="flex justify-between"><span>Delivery Subtotal</span><span class="font-mono">${fmt(det.selDelTotal)}</span></div>
+                        <div class="flex justify-between">
+                            <span>Delivery (Volumetric)</span>
+                             <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(state.totalKwh)} kWh @ $0.01453</span>
+                             <span class="font-mono">${fmt(det.selDelVol)}</span>
+                         </div>
+                        
                         <div class="flex justify-between">
                             <span>Supply (On-Peak)</span>
                             <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(state.onPeakKwh)} kWh @ $${CONST.SUPPLY_SEL_ON.toFixed(5)}</span>
@@ -387,7 +401,8 @@
                             <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(state.offPeakKwh)} kWh @ $${CONST.SUPPLY_SEL_OFF.toFixed(5)}</span>
                             <span class="font-mono">${fmt(det.selSupOff)}</span>
                         </div>
-                        <div class="flex justify-between"><span>Merchant/Tax</span><span class="font-mono">${fmt(det.selMFC + (det.selSupTotal - det.selSupOn - det.selSupOff - det.selMFC))}</span></div>
+                        <div class="flex justify-between"><span>Merchant Function Charge</span><span class="font-mono">${fmt(det.selMFC)}</span></div>
+                        <div class="flex justify-between text-gray-400 italic"><span>Taxes & Surcharges</span><span class="font-mono">${fmt(selTax)}</span></div>
                     </div>
                     <div class="flex justify-between font-black text-lg text-blue-700 pt-1 border-t mt-2"><span>Total Bill</span><span>${fmt(cur.selTotal)}</span></div>
                 </div>
