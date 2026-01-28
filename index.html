@@ -512,6 +512,14 @@
         const keys = Object.keys(monthlyData).filter(k => k !== 'rolling').sort((a,b)=>parseInt(a)-parseInt(b));
         const labels = keys.map(k => `${MONTH_NAMES[k]} (${monthlyData[k].days}d)`);
         
+        // Calculate max values to synchronize axes (kW scale = kWh scale / 540 for 75% load factor alignment)
+        // Either dataset can set the chart max, but the ratio is always 540
+        const dataMaxKwh = Math.max(...keys.map(k => monthlyData[k].onPeakKwh + monthlyData[k].offPeakKwh));
+        const dataMaxKw = Math.max(...keys.map(k => Math.max(monthlyData[k].peakKw, monthlyData[k].peakKwOff)));
+        // Determine the effective max: whichever is larger when scaled
+        const maxKwh = Math.max(dataMaxKwh, dataMaxKw * 540);
+        const maxKw = maxKwh / 540;
+        
         historyChartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -527,8 +535,8 @@
                 responsive: true, maintainAspectRatio: false,
                 scales: {
                     x: { stacked: true, grid: { display: false } },
-                    y: { stacked: true, position: 'left', title: { display: true, text: 'kWh', font: { size: 9 } } },
-                    y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'kW', font: { size: 9 } }, beginAtZero: true }
+                    y: { stacked: true, position: 'left', title: { display: true, text: 'kWh', font: { size: 9 } }, min: 0, max: maxKwh * 1.1 },
+                    y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'kW', font: { size: 9 } }, min: 0, max: maxKw * 1.1 }
                 },
                 plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 8, font: { size: 9 } } } }
             }
