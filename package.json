@@ -1,0 +1,15 @@
+{
+  "name": "powerpricing",
+  "version": "1.0.0",
+  "description": "ConEd NYC 2026 Select Pricing Plan Estimator",
+  "scripts": {
+    "test": "node test/prepare.js && vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "jsdom": "^24.0.0",
+    "vitest": "^1.6.1"
+  }
+}
