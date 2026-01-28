@@ -138,8 +138,8 @@
             </div>
             <div class="flex justify-between items-end border-t border-gray-200 pt-3">
                 <div>
-                    <div id="yearlyStd" class="text-xs text-gray-400 line-through">--</div>
-                    <div id="yearlySel" class="text-2xl font-black text-gray-800 tracking-tight">--</div>
+                    <div id="yearlyStd" class="text-base text-gray-400 line-through">--</div>
+                    <div id="yearlySel" class="text-xl font-black text-gray-800 tracking-tight">--</div>
                 </div>
                 <div id="yearlySavings" class="text-right text-[10px] font-black pb-1 border-b-2">--</div>
             </div>
@@ -480,7 +480,8 @@
             setTxt('yearlySel', `$${ySel.toLocaleString(undefined, {maximumFractionDigits:0})} / YEAR`);
             const ySav = yStd - ySel;
             const annualPct = (Math.abs(ySav) / yStd) * 100;
-            setTxt('yearlySavings', `${ySav>=0?'-':'+'}$${Math.abs(ySav).toLocaleString(undefined, {maximumFractionDigits:0})} (${annualPct.toFixed(1)}%) ${ySav>=0?'SAVINGS':'EXTRA'}`);
+            const prefix = ySav >= 0 ? "SELECT PLAN SAVES" : "SELECT PLAN COSTS EXTRA";
+            setTxt('yearlySavings', `${prefix} $${Math.abs(ySav).toLocaleString(undefined, { maximumFractionDigits: 0 })} (${annualPct.toFixed(1)}%)`);
             
             const realCount = Object.keys(parsedMonthlyData).filter(k=>parsedMonthlyData[k].days>=20).length;
             setTxt('baseMonthLabel', realCount > 0 ? `${realCount} Verified Months + Estimates` : (MONTH_NAMES[state.billMonth] || "Estimated"));
@@ -497,7 +498,7 @@
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: true, labels: { boxWidth: 10, font: { size: 10 }, filter: (l) => l.text !== 'Select (Verified)' } }, tooltip: { mode: 'index', intersect: false } },
+                    plugins: { legend: { display: true, labels: { boxWidth: 10, font: { size: 10 } } }, tooltip: { mode: 'index', intersect: false } },
                     scales: { x: { stacked: false, grid: { display: false } }, y: { beginAtZero: true, display: false } }
                 }
             });
@@ -557,19 +558,19 @@
         if (savings >= 0) {
             card.className = 'card bg-green-50 border-green-100 text-center';
             sl.className = 'text-[10px] font-bold uppercase text-green-600 mb-1';
-            sl.textContent = 'Estimated Savings';
+            sl.textContent = `Estimated Savings for ${state.billMonth === 'rolling' ? 'Rolling Year' : MONTH_NAMES[monthIdx]}`;
             sa.className = 'text-4xl font-black text-green-700';
             sa.textContent = fmt0(savings);
             sp.className = 'text-xs font-bold text-green-600 mt-1 uppercase tracking-tight';
-            sp.textContent = `${((savings/cur.stdTotal)*100).toFixed(1)}% SAVINGS`;
+            sp.textContent = `SELECT PLAN SAVES ${((savings / cur.stdTotal) * 100).toFixed(1)}%`;
         } else {
             card.className = 'card bg-orange-50 border-orange-100 text-center';
             sl.className = 'text-[10px] font-bold uppercase text-orange-600 mb-1';
-            sl.textContent = 'Extra Cost';
+            sl.textContent = `Extra Cost for ${state.billMonth === 'rolling' ? 'Rolling Year' : MONTH_NAMES[monthIdx]}`;
             sa.className = 'text-4xl font-black text-orange-700';
             sa.textContent = fmt0(Math.abs(savings));
             sp.className = 'text-xs font-bold text-orange-600 mt-1 uppercase tracking-tight';
-            sp.textContent = `${((Math.abs(savings)/cur.stdTotal)*100).toFixed(1)}% MORE EXPENSIVE`;
+            sp.textContent = `SELECT PLAN COSTS AN EXTRA ${((Math.abs(savings) / cur.stdTotal) * 100).toFixed(1)}%`;
         }
 
         renderAnnualChart();
@@ -597,7 +598,7 @@
                 const raw = hash.split('data=')[1];
                 raw.split('|').forEach(chunk => {
                     const p = chunk.split(',').map(Number);
-                    if(p.length >= 8) {
+                    if (p.length >= 7) {
                         parsedMonthlyData[p[0]] = {
                             totalKwh: p[1], onPeakKwh: p[2], offPeakKwh: p[3],
                             peakKw: p[4], peakKwOff: p[5], days: p[6], label: MONTH_NAMES[p[0]]
