@@ -109,6 +109,108 @@ describe('PowerPricing Calculations', () => {
         });
     });
 
+    describe('Net Metering', () => {
+        it('should clamp negative kWh values to zero billed amount', () => {
+            // Simulate net export scenario (PV production > consumption)
+            const usage = {
+                totalKwh: -500, // Net exporter
+                onPeakKwh: -100,
+                offPeakKwh: -400,
+                peakKw: 5,
+                peakKwOff: 3
+            };
+
+            const result = calculate(usage, '6'); // Summer
+
+            // Supply charges should be $0 (not negative)
+            expect(result.details.selSupOn).toBe(0);
+            expect(result.details.selSupOff).toBe(0);
+            expect(result.billedKwh.totalSel).toBe(0);
+            expect(result.billedKwh.totalStd).toBe(0);
+
+            // Should generate credits for future use
+            expect(result.credits.onPeak).toBe(100);
+            expect(result.credits.offPeak).toBe(400);
+            expect(result.credits.general).toBe(500);
+        });
+
+        it('should apply credits to reduce billed kWh', () => {
+            const usage = {
+                totalKwh: 1000,
+                onPeakKwh: 300,
+                offPeakKwh: 700,
+                peakKw: 5,
+                peakKwOff: 3
+            };
+
+            // Apply credits
+            const credits = { onPeak: 100, offPeak: 200, general: 150 };
+            const result = calculate(usage, '0', credits);
+
+            // Select Plan: billed should be reduced by on-peak/off-peak credits
+            expect(result.billedKwh.onPeak).toBe(200); // 300 - 100
+            expect(result.billedKwh.offPeak).toBe(500); // 700 - 200
+            expect(result.billedKwh.totalSel).toBe(700);
+
+            // Standard Plan: billed = (300+700) - 150 = 850
+            expect(result.billedKwh.totalStd).toBe(850);
+
+            // No new credits generated (usage > credits)
+            expect(result.credits.onPeak).toBe(0);
+            expect(result.credits.offPeak).toBe(0);
+            expect(result.credits.general).toBe(0);
+        });
+
+        it('should carry excess credits when credits > usage', () => {
+            const usage = {
+                totalKwh: 100,
+                onPeakKwh: 50,
+                offPeakKwh: 50,
+                peakKw: 2,
+                peakKwOff: 1
+            };
+
+            // Credits exceed usage
+            const credits = { onPeak: 200, offPeak: 100, general: 200 };
+            const result = calculate(usage, '0', credits);
+
+            // Billed is clamped to 0
+            expect(result.billedKwh.onPeak).toBe(0);
+            expect(result.billedKwh.offPeak).toBe(0);
+
+            // Excess credits carry forward
+            expect(result.credits.onPeak).toBe(150); // 200 - 50 = 150 remaining
+            expect(result.credits.offPeak).toBe(50);  // 100 - 50 = 50 remaining
+            expect(result.credits.general).toBe(100); // 200 - 100 = 100 remaining
+        });
+
+        it('should combine on-peak and off-peak for Standard Plan before clamping', () => {
+            // -50 on-peak + 12 off-peak = -38 total, clamp to 0, generate 38 credit
+            const usage = {
+                totalKwh: -38,
+                onPeakKwh: -50,
+                offPeakKwh: 12,
+                peakKw: 2,
+                peakKwOff: 1
+            };
+
+            const result = calculate(usage, '0');
+
+            // Standard Plan: -50 + 12 = -38 total, clamps to 0
+            expect(result.billedKwh.totalStd).toBe(0);
+            expect(result.credits.general).toBe(38);
+            expect(result.details.stdSupVol).toBe(0);
+            expect(result.details.stdDelVol).toBe(0);
+
+            // Select Plan: -50 clamps to 0, 12 stays as 12
+            expect(result.billedKwh.onPeak).toBe(0);
+            expect(result.billedKwh.offPeak).toBe(12);
+            expect(result.billedKwh.totalSel).toBe(12);
+            expect(result.credits.onPeak).toBe(50);
+            expect(result.credits.offPeak).toBe(0);
+        });
+    });
+
     describe('Constants Integirty', () => {
         it('should have season weights summing to approx 1.0', () => {
             const sum = SEASON_WEIGHTS.reduce((a, b) => a + b, 0);

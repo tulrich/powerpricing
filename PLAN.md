@@ -24,18 +24,18 @@ Phase 2: Data Intelligence
 - [x] Implement "Green Button" XML/CSV .zip parser.
 - [x] Logic to extract peak demand (kW) and total usage (kWh) from intervals.
 - [x] Comparison visualization (Standard vs. Select).
-- [ ] Handle net metering logic. Certainly the charges won't go
+- [x] Handle net metering logic. Certainly the charges won't go
       negative if usage is negative, so we need to clamp negative
       values in the bill calcuation.  It seems from my Select Pricing
       bill there are KWH "bank balances" for On Peak and Off Peak
       buckets. So probably in months where my PV production exceeds
       consumption I would start having a "Cumulative Credit kWh" that
-      would deduct from billed kWh in subsequent months.
+      would deduct from billed kWh in subsequent months in each bucket.
 - [ ] Fix the Bill Summary data upload.
 
 Phase 3: Improve Software
 
-- [ ] Implement a lightweight test framework that can be run against
+- [x] Implement a lightweight test framework that can be run against
       the single-file index.html. Put it in a test/ subdirectory.
       This can be a real framework that does not manifest inside our
       index.html but is able to test it as-is, so we can do heavier weight

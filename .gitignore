@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Test artifacts
+test/unit/app_logic.js
+
+# OS files
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# npm
+package-lock.json
+npm-debug.log*

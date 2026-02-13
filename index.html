@@ -306,36 +306,53 @@
     });
 
     // --- Calculations & Rendering ---
-    function calculate(usage, monthKey) {
+    function calculate(usage, monthKey, credits = { onPeak: 0, offPeak: 0, general: 0 }) {
         let monthIdx = (monthKey === 'rolling') ? 0 : parseInt(monthKey);
         const isSummer = monthIdx >= 5 && monthIdx <= 8; 
         const demandRate = isSummer ? CONST.SUMMER_DEMAND : CONST.WINTER_DEMAND;
         const stdSupplyRate = isSummer ? CONST.SUPPLY_STD_SUMMER : CONST.SUPPLY_STD_WINTER;
         
-        // Standard Plan Calculations
+        // Net metering for Select Plan: track on-peak and off-peak separately (di            ent rates)
+        const netOnPeak =            ge.onPeakKwh - credits.onPeak;
+        const netOffPeak = usage.offPeakKwh - credits.of                       const billedOnPeak = Math.max(0, netOnPeak);
+        const                 fPeak = Math.max(0, netOffPeak);
+
+        // Netm                for Standard Plan: combine all kWh first, then clamp (single rate)
+                      netTotal = (usage.onPeakKwh + usage.offPeakKwh) - credits.general;
+        const bilS                h.max(0, netTotal);
+
+        // Select Plan billed total (sum of separately-clamped bucke                    const billedTotalSel = billedOnPeak + billedOffP                      // Excess generation becomes new credits
+                        wCredits = {
+            onPeak: netOnPeak <                 .abs(netOnPeak) : 0,
+            offPeak: netOff                 ? Math.abs(netOffPeak) : 0,
+            general: netTotal < 0 ? Math.abs(netTotal)                     };
+
+        // Standard Plan Calculations (uses combined total)
         const stdFixed = CONST.SC1_STD_FIXED;
-        const stdDelVol = usage.totalKwh * (CONST.STD_DELIVERY_KWH + CONST.SBC_RATE);
+        const stdDelVol = billedTotalStd * (CONST.STD_DELIVERY_KWH + CONST.SBC_RATE);
         const stdDelTotal = (stdFixed + stdDelVol) * CONST.TAX_DELIVERY;
         
-        const stdSupVol = usage.totalKwh * stdSupplyRate;
-        const stdMFC = usage.totalKwh * CONST.MFC_RATE;
+        const stdSupVol = billedTotalStd * stdSupplyRate;
+        const stdMFC = billedTotalStd * CONST.MFC_RATE;
         const stdSupTotal = (stdSupVol + stdMFC) * CONST.TAX_SUPPLY;
         
-        // Select Plan Calculations
+        // Select Plan Calculations (uses separate on-peak/off-peak)
         const selFixed = CONST.SC1_SEL_FIXED;
         const demandPeakCost = usage.peakKw * demandRate;
         const demandOffCost = usage.peakKwOff * CONST.DEMAND_OFF_PEAK;
-        const selDelVol = usage.totalKwh * (CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE);
+        const selDelVol = billedTotalSel * (CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE);
         const selDelTotal = (selFixed + demandPeakCost + demandOffCost + selDelVol) * CONST.TAX_DELIVERY;
 
-        const selSupOn = usage.onPeakKwh * CONST.SUPPLY_SEL_ON;
-        const selSupOff = usage.offPeakKwh * CONST.SUPPLY_SEL_OFF;
-        const selMFC = usage.totalKwh * CONST.MFC_RATE;
+        const selSupOn = billedOnPeak * CONST.SUPPLY_SEL_ON;
+        const selSuplledOffPeak * CONST.SUPPLY_SEL_OFF;
+        const selMFC = billedTotalSel * CONST.MFC_RATE;
         const selSupTotal = (selSupOn + selSupOff + selMFC) * CONST.TAX_SUPPLY;
 
         return { 
             stdTotal: stdDelTotal + stdSupTotal, selTotal: selDelTotal + selSupTotal,
             stdDel: stdDelTotal, stdSup: stdSupTotal, selDel: selDelTotal, selSup: selSupTotal,
+            credits: newCredits,
+            billedKwh: { onPeak: billedOnPeak, offPeak: billedOffPeak, totalSel: billedTotalSel, totalStd: billedTotalStd },
             details: {
                 selFixed, demandPeakCost, demandOffCost, selDelVol, 
                 selDelTotal, selSupOn, selSupOff, selMFC, selSupTotal,
@@ -387,23 +404,33 @@
                     <div class="space-y-1">
                         <div class="flex justify-between">
                             <span>Delivery (Volumetric)</span>
-                             <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(state.totalKwh)} kWh @ $0.01453</span>
+                             <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(cur.billedKwh.totalSel)} kWh @ $0.01453</span>
                              <span class="font-mono">${fmt(det.selDelVol)}</span>
                          </div>
                         
                         <div class="flex justify-between">
                             <span>Supply (On-Peak)</span>
-                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(state.onPeakKwh)} kWh @ $${CONST.SUPPLY_SEL_ON.toFixed(5)}</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(cur.billedKwh.onPeak)} kWh @ $${CONST.SUPPLY_SEL_ON.toFixed(5)}</span>
                             <span class="font-mono">${fmt(det.selSupOn)}</span>
                         </div>
                         <div class="flex justify-between">
                             <span>Supply (Off-Peak)</span>
-                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(state.offPeakKwh)} kWh @ $${CONST.SUPPLY_SEL_OFF.toFixed(5)}</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(cur.billedKwh.offPeak)} kWh @ $${CONST.SUPPLY_SEL_OFF.toFixed(5)}</span>
                             <span class="font-mono">${fmt(det.selSupOff)}</span>
                         </div>
                         <div class="flex justify-between"><span>Merchant Function Charge</span><span class="font-mono">${fmt(det.selMFC)}</span></div>
                         <div class="flex justify-between text-gray-400 italic"><span>Taxes & Surcharges</span><span class="font-mono">${fmt(selTax)}</span></div>
                     </div>
+                    ${(cur.credits.onPeak > 0 || cur.credits.offPeak > 0 || state.onPeakKwh < 0 || state.offPeakKwh < 0) ? `
+                    <div class="bg-green-50/50 p-2 rounded-lg space-y-1 my-2 border border-green-100">
+                        <div class="flex justify-between text-[11px] font-bold text-green-800 uppercase tracking-wider mb-1">☀️ Net Metering</div>
+                        ${state.onPeakKwh < 0 ? `<div class="flex justify-between text-green-700"><span>On-Peak Export</span><span class="font-mono">${Math.abs(Math.round(state.onPeakKwh))} kWh</span></div>` : ''}
+                        ${state.offPeakKwh < 0 ? `<div class="flex justify-between text-green-700"><span>Off-Peak Export</span><span class="font-mono">${Math.abs(Math.round(state.offPeakKwh))} kWh</span></div>` : ''}
+                        ${cur.credits.onPeak > 0 ? `<div class="flex justify-between text-green-600"><span>On-Peak Credit Bank</span><span class="font-mono font-bold">${Math.round(cur.credits.onPeak)} kWh</span></div>` : ''}
+                        ${cur.credits.offPeak > 0 ? `<div class="flex justify-between text-green-600"><span>Off-Peak Credit Bank</span><span class="font-mono font-bold">${Math.round(cur.credits.offPeak)} kWh</span></div>` : ''}
+                        <div class="text-[9px] text-green-600 italic mt-1">Credits carry forward to reduce future bills</div>
+                    </div>
+                    ` : ''}
                     <div class="flex justify-between font-black text-lg text-blue-700 pt-1 border-t mt-2"><span>Total Bill</span><span>${fmt(cur.selTotal)}</span></div>
                 </div>
             </div>
@@ -414,14 +441,14 @@
                         <div class="flex justify-between"><span>Basic Service Charge</span><span class="font-mono">${fmt(det.stdFixed)}</span></div>
                         <div class="flex justify-between">
                             <span>Delivery</span>
-                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(state.totalKwh)} kWh @ $${stdDeliveryRate.toFixed(3)}</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(cur.billedKwh.totalStd)} kWh @ $${stdDeliveryRate.toFixed(3)}</span>
                             <span class="font-mono">${fmt(det.stdDelVol)}</span>
                         </div>
                     </div>
                     <div class="space-y-1">
                         <div class="flex justify-between">
                             <span>Supply Charge</span>
-                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(state.totalKwh)} kWh @ $${stdSupplyRate.toFixed(3)}</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(cur.billedKwh.totalStd)} kWh @ $${stdSupplyRate.toFixed(3)}</span>
                             <span class="font-mono">${fmt(det.stdSupVol)}</span>
                         </div>
                         <div class="flex justify-between"><span>Merchant Function Charge</span><span class="font-mono">${fmt(det.stdMFC)}</span></div>
@@ -447,6 +474,9 @@
             let yStd=0, ySel=0;
             let chartLabels = [], chartStd = [], chartSel = [], chartColors = [];
     
+            // Track net metering credits across months
+            let credits = { onPeak: 0, offPeak: 0, general: 0 };
+            
             MONTH_NAMES.forEach((m, i) => {
                 let dataForMonth;
                 let isReal = false;
@@ -465,7 +495,10 @@
                     };
                 }
     
-                const est = calculate(dataForMonth, i.toString());
+                // Pass credits to calculate, then carry forward any new credits
+                const est = calculate(dataForMonth, i.toString(), credits);
+                credits = est.credits;
+                
                 yStd += est.stdTotal; 
                 ySel += est.selTotal;
                 
