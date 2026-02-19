@@ -216,10 +216,10 @@
         SC1_STD_FIXED: 20.00, SC1_SEL_FIXED: 30.28, 
         SBC_RATE: 0.00472, TAX_DELIVERY: 1.0951, TAX_SUPPLY: 1.0702,   
         STD_DELIVERY_KWH: 0.165, SEL_DELIVERY_KWH: 0.00981, 
-        WINTER_DEMAND: 19.50, SUMMER_DEMAND: 26.50, DEMAND_OFF_PEAK: 7.48,
+        WINTER_DEMAND: 21.313, SUMMER_DEMAND: 26.50, DEMAND_OFF_PEAK: 7.875,
         MFC_RATE: 0.003733, 
         SUPPLY_STD_WINTER: 0.136, SUPPLY_STD_SUMMER: 0.170, 
-        SUPPLY_SEL_ON: 0.22118, SUPPLY_SEL_OFF: 0.09952,
+        SUPPLY_SEL_ON: 0.20652, SUPPLY_SEL_OFF: 0.08842,
     };
 
     const DEFAULT_STATE = {
@@ -312,20 +312,25 @@
         const demandRate = isSummer ? CONST.SUMMER_DEMAND : CONST.WINTER_DEMAND;
         const stdSupplyRate = isSummer ? CONST.SUPPLY_STD_SUMMER : CONST.SUPPLY_STD_WINTER;
         
-        // Net metering for Select Plan: track on-peak and off-peak separately (di            ent rates)
-        const netOnPeak =            ge.onPeakKwh - credits.onPeak;
-        const netOffPeak = usage.offPeakKwh - credits.of                       const billedOnPeak = Math.max(0, netOnPeak);
-        const                 fPeak = Math.max(0, netOffPeak);
+        // Net metering for Select Plan: track on-peak and off-peak separately (different rates)
+        const netOnPeak = usage.onPeakKwh - credits.onPeak;
+        const netOffPeak = usage.offPeakKwh - credits.offPeak;
+        const billedOnPeak = Math.max(0, netOnPeak);
+        const billedOffPeak = Math.max(0, netOffPeak);
 
-        // Netm                for Standard Plan: combine all kWh first, then clamp (single rate)
-                      netTotal = (usage.onPeakKwh + usage.offPeakKwh) - credits.general;
-        const bilS                h.max(0, netTotal);
+        // Net metering for Standard Plan: combine all kWh first, then clamp (single rate)
+        const netTotal = (usage.onPeakKwh + usage.offPeakKwh) - credits.general;
+        const billedTotalStd = Math.max(0, netTotal);
 
-        // Select Plan billed total (sum of separately-clamped bucke                    const billedTotalSel = billedOnPeak + billedOffP                      // Excess generation becomes new credits
-                        wCredits = {
-            onPeak: netOnPeak <                 .abs(netOnPeak) : 0,
-            offPeak: netOff                 ? Math.abs(netOffPeak) : 0,
-            general: netTotal < 0 ? Math.abs(netTotal)                     };
+        // Select Plan billed total (sum of separately-clamped buckets)
+        const billedTotalSel = billedOnPeak + billedOffPeak;
+
+        // Excess generation becomes new credits
+        const newCredits = {
+            onPeak: netOnPeak < 0 ? Math.abs(netOnPeak) : 0,
+            offPeak: netOffPeak < 0 ? Math.abs(netOffPeak) : 0,
+            general: netTotal < 0 ? Math.abs(netTotal) : 0
+        };
 
         // Standard Plan Calculations (uses combined total)
         const stdFixed = CONST.SC1_STD_FIXED;
@@ -344,7 +349,7 @@
         const selDelTotal = (selFixed + demandPeakCost + demandOffCost + selDelVol) * CONST.TAX_DELIVERY;
 
         const selSupOn = billedOnPeak * CONST.SUPPLY_SEL_ON;
-        const selSuplledOffPeak * CONST.SUPPLY_SEL_OFF;
+        const selSupOff = billedOffPeak * CONST.SUPPLY_SEL_OFF;
         const selMFC = billedTotalSel * CONST.MFC_RATE;
         const selSupTotal = (selSupOn + selSupOff + selMFC) * CONST.TAX_SUPPLY;
 
