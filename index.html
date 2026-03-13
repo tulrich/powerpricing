@@ -13,6 +13,10 @@
         .drag-active { border-color: #4285f4; background-color: #eff6ff; }
         .modal-enter { opacity: 0; transform: scale(0.95); }
         .modal-enter-active { opacity: 1; transform: scale(1); transition: opacity 200ms, transform 200ms; }
+        /* Reusable form element helpers to reduce repetitive Tailwind classes. */
+        .form-label { display: block; font-size: 0.625rem; font-weight: 700; text-transform: uppercase; color: #6b7280; margin-bottom: 0.25rem; }
+        .form-input { width: 100%; padding: 0.5rem; background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 0.375rem; font-family: 'Courier New', monospace; font-size: 0.875rem; }
+        .section-heading { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; margin-bottom: 1rem; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 font-sans leading-relaxed">
@@ -53,34 +57,34 @@
         </section>
 
         <section class="card">
-            <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-4">Usage Profile</h2>
+            <h2 class="section-heading">Usage Profile</h2>
             <div class="grid grid-cols-2 gap-4">
                 <div class="col-span-2">
-                    <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Base Period for Estimates</label>
+                    <label class="form-label">Base Period for Estimates</label>
                     <select id="billMonth" class="w-full p-2 bg-gray-50 border rounded-md font-sans text-sm">
                         </select>
                 </div>
                 <div class="col-span-2">
-                    <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Total Energy (kWh)</label>
-                    <input type="number" id="totalKwh" value="3250" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-lg">
+                    <label class="form-label">Total Energy (kWh)</label>
+                    <input type="number" id="totalKwh" value="3250" class="form-input text-lg">
                 </div>
-                
+
                 <div>
-                    <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">On-Peak kWh</label>
-                    <input type="number" id="onPeakKwh" value="666" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
-                </div>
-                <div>
-                    <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Off-Peak kWh</label>
-                    <input type="number" id="offPeakKwh" value="2584" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
-                </div>
-                
-                <div>
-                    <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Peak Demand (kW)</label>
-                    <input type="number" id="peakKw" value="7.6" step="0.1" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                    <label class="form-label">On-Peak kWh</label>
+                    <input type="number" id="onPeakKwh" value="666" class="form-input">
                 </div>
                 <div>
-                    <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Off-Peak Demand (kW)</label>
-                    <input type="number" id="peakKwOff" value="7.9" step="0.1" class="w-full p-2 bg-gray-50 border rounded-md font-mono text-sm">
+                    <label class="form-label">Off-Peak kWh</label>
+                    <input type="number" id="offPeakKwh" value="2584" class="form-input">
+                </div>
+
+                <div>
+                    <label class="form-label">Peak Demand (kW)</label>
+                    <input type="number" id="peakKw" value="7.6" step="0.1" class="form-input">
+                </div>
+                <div>
+                    <label class="form-label">Off-Peak Demand (kW)</label>
+                    <input type="number" id="peakKwOff" value="7.9" step="0.1" class="form-input">
                 </div>
             </div>
         </section>
@@ -228,9 +232,11 @@
     };
 
     // --- Globals ---
-    let chartInstance = null;
-    let historyChartInstance = null;
+    /** @type {Chart|null} */ let chartInstance = null;
+    /** @type {Chart|null} */ let historyChartInstance = null;
+    /** @type {Object<string, {totalKwh:number, onPeakKwh:number, offPeakKwh:number, peakKw:number, peakKwOff:number, days:number, label:string}>} */
     let parsedMonthlyData = {};
+    /** @type {Map<number, number>} Timestamp (ms) → kWh for each raw interval reading. */
     let globalIntervals = new Map();
 
     // --- Core Functions (Defined BEFORE use) ---
@@ -384,14 +390,27 @@
         const selTax = (cur.selDel - det.selFixed - det.demandPeakCost - det.demandOffCost - det.selDelVol) +
             (cur.selSup - det.selSupOn - det.selSupOff - det.selMFC);
 
+        /**
+         * Generates a detail row with a label, optional rate annotation, and right-aligned amount.
+         * NOTE: label and rateNote must be trusted/hardcoded strings (never user input).
+         * @param {string} label - Line item name.
+         * @param {number} amount - Dollar amount to format.
+         * @param {string} [rateNote] - Optional rate/quantity annotation (e.g. "100 kWh @ $0.20").
+         * @returns {string} HTML string for the row.
+         */
+        const detailRow = (label, amount, rateNote = '') => {
+            const rate = rateNote ? `<span class="text-[10px] text-gray-400 mt-0.5">${rateNote}</span>` : '';
+            return `<div class="flex justify-between"><span>${label}</span>${rate}<span class="font-mono">${fmt(amount)}</span></div>`;
+        };
+
         const html = `
             <div>
                 <h4 class="text-xs font-bold uppercase text-blue-600 mb-2 border-b border-blue-100 pb-1">Select Pricing Plan</h4>
                 <div class="space-y-2 text-sm text-gray-600">
                     <div class="space-y-1">
-                        <div class="flex justify-between"><span>Basic Service Charge</span><span class="font-mono">${fmt(det.selFixed)}</span></div>
+                        ${detailRow('Basic Service Charge', det.selFixed)}
                     </div>
-                    
+
                     <div class="bg-blue-50/50 p-2 rounded-lg space-y-1 my-2">
                         <div class="flex justify-between text-[11px] font-bold text-blue-800 uppercase tracking-wider mb-1">Demand Charges</div>
                         <div class="flex justify-between">
@@ -401,29 +420,16 @@
                         </div>
                         <div class="flex justify-between">
                             <span>Off-Peak Demand</span>
-                            <span class="text-[10px] text-gray-400 mt-0.5">${parseFloat(state.peakKwOff).toFixed(2)} kW @ $7.48</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${parseFloat(state.peakKwOff).toFixed(2)} kW @ $${CONST.DEMAND_OFF_PEAK.toFixed(3)}</span>
                             <span class="font-mono font-bold text-blue-700">${fmt(det.demandOffCost)}</span>
                         </div>
                     </div>
 
                     <div class="space-y-1">
-                        <div class="flex justify-between">
-                            <span>Delivery (Volumetric)</span>
-                             <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(cur.billedKwh.totalSel)} kWh @ $0.01453</span>
-                             <span class="font-mono">${fmt(det.selDelVol)}</span>
-                         </div>
-                        
-                        <div class="flex justify-between">
-                            <span>Supply (On-Peak)</span>
-                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(cur.billedKwh.onPeak)} kWh @ $${CONST.SUPPLY_SEL_ON.toFixed(5)}</span>
-                            <span class="font-mono">${fmt(det.selSupOn)}</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Supply (Off-Peak)</span>
-                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(cur.billedKwh.offPeak)} kWh @ $${CONST.SUPPLY_SEL_OFF.toFixed(5)}</span>
-                            <span class="font-mono">${fmt(det.selSupOff)}</span>
-                        </div>
-                        <div class="flex justify-between"><span>Merchant Function Charge</span><span class="font-mono">${fmt(det.selMFC)}</span></div>
+                        ${detailRow('Delivery (Volumetric)', det.selDelVol, `${Math.round(cur.billedKwh.totalSel)} kWh @ $${(CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE).toFixed(5)}`)}
+                        ${detailRow('Supply (On-Peak)', det.selSupOn, `${Math.round(cur.billedKwh.onPeak)} kWh @ $${CONST.SUPPLY_SEL_ON.toFixed(5)}`)}
+                        ${detailRow('Supply (Off-Peak)', det.selSupOff, `${Math.round(cur.billedKwh.offPeak)} kWh @ $${CONST.SUPPLY_SEL_OFF.toFixed(5)}`)}
+                        ${detailRow('Merchant Function Charge', det.selMFC)}
                         <div class="flex justify-between text-gray-400 italic"><span>Taxes & Surcharges</span><span class="font-mono">${fmt(selTax)}</span></div>
                     </div>
                     ${(cur.credits.onPeak > 0 || cur.credits.offPeak > 0 || state.onPeakKwh < 0 || state.offPeakKwh < 0) ? `
@@ -443,20 +449,12 @@
                 <h4 class="text-xs font-bold uppercase text-gray-400 mb-2 border-b border-gray-100 pb-1">Standard Plan</h4>
                 <div class="space-y-2 text-sm text-gray-600">
                     <div class="bg-gray-50/50 p-2 rounded-lg space-y-1 mb-2">
-                        <div class="flex justify-between"><span>Basic Service Charge</span><span class="font-mono">${fmt(det.stdFixed)}</span></div>
-                        <div class="flex justify-between">
-                            <span>Delivery</span>
-                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(cur.billedKwh.totalStd)} kWh @ $${stdDeliveryRate.toFixed(3)}</span>
-                            <span class="font-mono">${fmt(det.stdDelVol)}</span>
-                        </div>
+                        ${detailRow('Basic Service Charge', det.stdFixed)}
+                        ${detailRow('Delivery', det.stdDelVol, `${Math.round(cur.billedKwh.totalStd)} kWh @ $${stdDeliveryRate.toFixed(3)}`)}
                     </div>
                     <div class="space-y-1">
-                        <div class="flex justify-between">
-                            <span>Supply Charge</span>
-                            <span class="text-[10px] text-gray-400 mt-0.5">${Math.round(cur.billedKwh.totalStd)} kWh @ $${stdSupplyRate.toFixed(3)}</span>
-                            <span class="font-mono">${fmt(det.stdSupVol)}</span>
-                        </div>
-                        <div class="flex justify-between"><span>Merchant Function Charge</span><span class="font-mono">${fmt(det.stdMFC)}</span></div>
+                        ${detailRow('Supply Charge', det.stdSupVol, `${Math.round(cur.billedKwh.totalStd)} kWh @ $${stdSupplyRate.toFixed(3)}`)}
+                        ${detailRow('Merchant Function Charge', det.stdMFC)}
                         <div class="flex justify-between text-gray-400 italic"><span>Taxes & Surcharges</span><span class="font-mono">${fmt(stdTax)}</span></div>
                     </div>
                     <div class="flex justify-between font-black text-lg text-gray-800 pt-1 border-t mt-2"><span>Total Bill</span><span>${fmt(cur.stdTotal)}</span></div>
@@ -914,9 +912,8 @@
     };
     
     // --- Window Assignments ---
+    // clearData and reset are aliases; toggleDetails/toggleHelp are already set above.
     window.reset = function() { window.clearData(); };
-    window.toggleDetails = toggleDetails;
-    window.toggleHelp = toggleHelp;
 
     window.onload = () => {
         initDropdown();
