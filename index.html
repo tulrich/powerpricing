@@ -332,8 +332,11 @@
     function loadMonthForFocused(monthKey) {
         const mIdx = monthKey === 'rolling' ? null : parseInt(monthKey);
         if (mIdx === null) return;
-        // Prefer manual override; fall back to upload data.
-        const data = monthManualData[mIdx] || parsedMonthlyData[mIdx];
+        // Load data based on the resolved source preference for this month.
+        const source = resolveSource(monthKey);
+        const data = source === 'upload' ? parsedMonthlyData[mIdx] :
+                     source === 'manual' ? monthManualData[mIdx] :
+                     null; // estimated: leave form values as-is
         if (!data) return;
         Object.assign(state, {
             totalKwh: data.totalKwh,
@@ -431,7 +434,7 @@
                 target.offPeakKwh = target.totalKwh - target.onPeakKwh;
                 updateDOM(['onPeakKwh', 'offPeakKwh']);
             }
-            if (prop === 'billMonth' && parsedMonthlyData && (parsedMonthlyData[target.billMonth] || monthManualData[parseInt(target.billMonth)])) {
+            if (prop === 'billMonth' && parsedMonthlyData && (parsedMonthlyData[parseInt(target.billMonth)] || monthManualData[parseInt(target.billMonth)])) {
                 loadMonthForFocused(target.billMonth);
             }
             syncToUrl();
@@ -796,7 +799,6 @@
         const savPos = savings >= 0;
         const mIdx = state.billMonth === 'rolling' ? null : parseInt(state.billMonth);
         const monthLabel = state.billMonth === 'rolling' ? 'Rolling Year' : (MONTH_NAMES[mIdx] ?? '--');
-        // NOTE: source is a trusted internal string, never user input.
         const badgeClass = { upload: 'bg-blue-100 text-blue-700', manual: 'bg-purple-100 text-purple-700', estimated: 'bg-gray-100 text-gray-500' }[source] || 'bg-gray-100 text-gray-500';
         const badgeLabel = source.charAt(0).toUpperCase() + source.slice(1);
         el.innerHTML = `
@@ -1147,14 +1149,14 @@
         render();
     };
 
-    // Manual fields record an override for the focused month on user input.
+    // Record a manual override for the focused month when a field value is committed.
     const MANUAL_FIELD_IDS = ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw', 'peakKwOff'];
     MANUAL_FIELD_IDS.forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener('input', (e) => {
-            state[id] = e.target.value;
-            recordManualOverride();
-        });
+        if (el) {
+            el.addEventListener('input', (e) => { state[id] = e.target.value; });
+            el.addEventListener('change', () => { recordManualOverride(); });
+        }
     });
     const billMonthEl = document.getElementById('billMonth');
     if (billMonthEl) billMonthEl.addEventListener('input', (e) => state['billMonth'] = e.target.value);
