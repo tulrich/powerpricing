@@ -17,6 +17,13 @@
         .form-label { display: block; font-size: 0.625rem; font-weight: 700; text-transform: uppercase; color: #6b7280; margin-bottom: 0.25rem; }
         .form-input { width: 100%; padding: 0.5rem; background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 0.375rem; font-family: 'Courier New', monospace; font-size: 0.875rem; }
         .section-heading { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; margin-bottom: 1rem; }
+        /* Tab buttons */
+        .tab-btn { flex: 1; padding: 0.375rem 0.5rem; font-size: 0.75rem; font-weight: 600; border-radius: 0.375rem; color: #6b7280; transition: all 0.15s; }
+        .tab-btn.active { background-color: white; color: #1f2937; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        /* Source selector buttons */
+        .src-btn { padding: 0.25rem 0.625rem; font-size: 0.625rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border-radius: 9999px; color: #9ca3af; border: 1px solid #e5e7eb; transition: all 0.15s; cursor: pointer; }
+        .src-btn.active { color: #1f2937; border-color: #9ca3af; background-color: #f9fafb; }
+        .src-btn:disabled { opacity: 0.35; cursor: not-allowed; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 font-sans leading-relaxed">
@@ -31,20 +38,65 @@
     </header>
 
     <main class="space-y-6 flex-grow">
-        <section id="dropZone" class="card border-2 border-dashed border-gray-300 text-center cursor-pointer transition-colors hover:border-blue-400 hover:bg-gray-50 relative">
-            <input type="file" id="fileInput" class="hidden" accept=".csv,.xml,.zip" multiple>
-            <div class="space-y-2 pointer-events-none">
-                <div class="text-2xl">⚡️</div>
-                <p class="text-xs font-bold text-gray-500 uppercase">Upload ConEd Data</p>
-                <p id="dropStatus" class="text-[10px] text-gray-400">Drop "Export usage" files here to accumulate history</p>
+
+        <!-- ─── INPUTS ──────────────────────────────────────────────── -->
+        <section class="card">
+            <!-- Tab switcher -->
+            <div class="flex gap-1 bg-gray-100 rounded-lg p-1 mb-4">
+                <button id="tabUpload" class="tab-btn active" onclick="window.switchTab('upload')">⚡️ Upload</button>
+                <button id="tabManual" class="tab-btn" onclick="window.switchTab('manual')">✏️ Manual Entry</button>
             </div>
-            <button onclick="window.toggleHelp(event)" class="absolute top-2 right-2 text-gray-400 hover:text-blue-500 z-10 p-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-            </button>
+
+            <!-- Upload panel -->
+            <div id="panelUpload">
+                <div id="dropZone" class="border-2 border-dashed border-gray-300 rounded-xl text-center cursor-pointer transition-colors hover:border-blue-400 hover:bg-gray-50 relative p-6">
+                    <input type="file" id="fileInput" class="hidden" accept=".csv,.xml,.zip" multiple>
+                    <div class="space-y-2 pointer-events-none">
+                        <div class="text-2xl">⚡️</div>
+                        <p class="text-xs font-bold text-gray-500 uppercase">Upload ConEd Data</p>
+                        <p id="dropStatus" class="text-[10px] text-gray-400">Drop "Export usage" files here to accumulate history</p>
+                    </div>
+                    <button onclick="window.toggleHelp(event)" class="absolute top-2 right-2 text-gray-400 hover:text-blue-500 z-10 p-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Manual entry panel -->
+            <div id="panelManual" class="hidden">
+                <h2 class="section-heading">Usage Profile</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="col-span-2">
+                        <label class="form-label">Base Period for Estimates</label>
+                        <select id="billMonth" class="w-full p-2 bg-gray-50 border rounded-md font-sans text-sm"></select>
+                    </div>
+                    <div class="col-span-2">
+                        <label class="form-label">Total Energy (kWh)</label>
+                        <input type="number" id="totalKwh" value="3250" class="form-input text-lg">
+                    </div>
+                    <div>
+                        <label class="form-label">On-Peak kWh</label>
+                        <input type="number" id="onPeakKwh" value="666" class="form-input">
+                    </div>
+                    <div>
+                        <label class="form-label">Off-Peak kWh</label>
+                        <input type="number" id="offPeakKwh" value="2584" class="form-input">
+                    </div>
+                    <div>
+                        <label class="form-label">Peak Demand (kW)</label>
+                        <input type="number" id="peakKw" value="7.6" step="0.1" class="form-input">
+                    </div>
+                    <div>
+                        <label class="form-label">Off-Peak Demand (kW)</label>
+                        <input type="number" id="peakKwOff" value="7.9" step="0.1" class="form-input">
+                    </div>
+                </div>
+            </div>
         </section>
 
+        <!-- ─── DATA VIZ ─────────────────────────────────────────────── -->
         <section id="historyCard" class="card hidden border-blue-100 bg-blue-50/30">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xs font-bold uppercase tracking-wider text-blue-800">Data Profile</h2>
@@ -53,86 +105,7 @@
             <div class="h-48">
                 <canvas id="historyChart"></canvas>
             </div>
-            <p id="historyMeta" class="text-[9px] text-center text-gray-400 mt-2 italic">Blue = Verified (>20 days) • Gray = Partial/Gap</p>
-        </section>
-
-        <section class="card">
-            <h2 class="section-heading">Usage Profile</h2>
-            <div class="grid grid-cols-2 gap-4">
-                <div class="col-span-2">
-                    <label class="form-label">Base Period for Estimates</label>
-                    <select id="billMonth" class="w-full p-2 bg-gray-50 border rounded-md font-sans text-sm">
-                        </select>
-                </div>
-                <div class="col-span-2">
-                    <label class="form-label">Total Energy (kWh)</label>
-                    <input type="number" id="totalKwh" value="3250" class="form-input text-lg">
-                </div>
-
-                <div>
-                    <label class="form-label">On-Peak kWh</label>
-                    <input type="number" id="onPeakKwh" value="666" class="form-input">
-                </div>
-                <div>
-                    <label class="form-label">Off-Peak kWh</label>
-                    <input type="number" id="offPeakKwh" value="2584" class="form-input">
-                </div>
-
-                <div>
-                    <label class="form-label">Peak Demand (kW)</label>
-                    <input type="number" id="peakKw" value="7.6" step="0.1" class="form-input">
-                </div>
-                <div>
-                    <label class="form-label">Off-Peak Demand (kW)</label>
-                    <input type="number" id="peakKwOff" value="7.9" step="0.1" class="form-input">
-                </div>
-            </div>
-        </section>
-
-        <section class="card overflow-hidden !p-0">
-            <table class="w-full text-left border-collapse">
-                <thead class="bg-gray-50 border-b">
-                    <tr>
-                        <th class="p-3 text-[10px] font-bold text-gray-500 uppercase">Itemized</th>
-                        <th class="p-3 text-[10px] font-bold text-gray-500 uppercase text-right">Standard</th>
-                        <th class="p-3 text-[10px] font-bold text-gray-500 uppercase text-right">Select</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y text-xs">
-                    <tr>
-                        <td class="p-3 text-gray-600 font-medium">Delivery</td>
-                        <td id="stdDel" class="p-3 text-right font-mono text-gray-500">--</td>
-                        <td id="selDel" class="p-3 text-right font-mono text-blue-600">--</td>
-                    </tr>
-                    <tr>
-                        <td class="p-3 text-gray-600 font-medium">Supply</td>
-                        <td id="stdSup" class="p-3 text-right font-mono text-gray-500">--</td>
-                        <td id="selSup" class="p-3 text-right font-mono text-blue-600">--</td>
-                    </tr>
-                    <tr class="bg-gray-50/50 font-bold">
-                        <td class="p-3 text-gray-800">Total Bill</td>
-                        <td id="stdTotal" class="p-3 text-right font-mono text-gray-800 text-sm">--</td>
-                        <td id="selTotal" class="p-3 text-right font-mono text-blue-700 text-sm">--</td>
-                    </tr>
-                    <tr class="text-[9px] text-gray-400">
-                        <td class="p-3 italic uppercase">Effective $/kWh</td>
-                        <td id="stdEff" class="p-3 text-right font-mono">--</td>
-                        <td id="selEff" class="p-3 text-right font-mono">--</td>
-                    </tr>
-                </tbody>
-            </table>
-            <div class="p-3 bg-gray-50 text-center border-t border-gray-100">
-                <button onclick="window.toggleDetails()" class="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider flex items-center justify-center gap-1 mx-auto">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    See Bill Details
-                </button>
-            </div>
-        </section>
-
-        <section id="savingsCard" class="card text-center transition-colors duration-300">
-            <h2 id="savingsLabel" class="text-[10px] font-bold uppercase mb-1">Estimated Savings</h2>
-            <div id="savingsAmount" class="text-4xl font-black">--</div>
-            <p id="savingsPercent" class="text-xs font-bold mt-1 uppercase tracking-tight">--</p>
+            <p id="historyMeta" class="text-[9px] text-center text-gray-400 mt-2 italic">Blue = Verified (&gt;20 days) • Gray = Partial/Gap</p>
         </section>
 
         <section id="yearlyCard" class="card border-dashed border-2 border-gray-200 bg-gray-50/50">
@@ -147,9 +120,81 @@
                 </div>
                 <div id="yearlySavings" class="text-right text-[10px] font-black pb-1 border-b-2">--</div>
             </div>
-            <p class="text-[9px] text-gray-400 mt-3 leading-tight italic">
+            <!-- Provenance legend -->
+            <div class="flex items-center gap-4 mt-3 text-[9px] text-gray-500">
+                <span class="flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-[#4285f4]"></span>Uploaded</span>
+                <span class="flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-[#a855f7]"></span>Manual</span>
+                <span class="flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-[#d1d5db]"></span>Estimated</span>
+            </div>
+            <p class="text-[9px] text-gray-400 mt-2 leading-tight italic">
                 Extrapolated from <span id="baseMonthLabel" class="font-bold text-gray-500">December</span> profile.
             </p>
+        </section>
+
+        <!-- ─── ANALYSIS ──────────────────────────────────────────────── -->
+        <section class="card space-y-4">
+            <h2 class="section-heading !mb-0">Analysis</h2>
+
+            <!-- Source selector for focused month -->
+            <div class="flex items-center gap-2">
+                <span class="text-[10px] text-gray-400 font-bold uppercase shrink-0">Source:</span>
+                <div class="flex gap-1">
+                    <button id="srcAuto"   class="src-btn active" onclick="window.setSourcePref('auto')">Auto</button>
+                    <button id="srcManual" class="src-btn"        onclick="window.setSourcePref('manual')">Manual</button>
+                    <button id="srcUpload" class="src-btn"        onclick="window.setSourcePref('upload')">Upload</button>
+                </div>
+            </div>
+
+            <!-- Inline monthly summary -->
+            <div id="inlineSummary" class="bg-gray-50 rounded-xl p-3 text-sm"></div>
+
+            <!-- Itemized comparison table -->
+            <div class="overflow-hidden rounded-xl border border-gray-100">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-50 border-b">
+                        <tr>
+                            <th class="p-3 text-[10px] font-bold text-gray-500 uppercase">Itemized</th>
+                            <th class="p-3 text-[10px] font-bold text-gray-500 uppercase text-right">Standard</th>
+                            <th class="p-3 text-[10px] font-bold text-gray-500 uppercase text-right">Select</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y text-xs">
+                        <tr>
+                            <td class="p-3 text-gray-600 font-medium">Delivery</td>
+                            <td id="stdDel" class="p-3 text-right font-mono text-gray-500">--</td>
+                            <td id="selDel" class="p-3 text-right font-mono text-blue-600">--</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 text-gray-600 font-medium">Supply</td>
+                            <td id="stdSup" class="p-3 text-right font-mono text-gray-500">--</td>
+                            <td id="selSup" class="p-3 text-right font-mono text-blue-600">--</td>
+                        </tr>
+                        <tr class="bg-gray-50/50 font-bold">
+                            <td class="p-3 text-gray-800">Total Bill</td>
+                            <td id="stdTotal" class="p-3 text-right font-mono text-gray-800 text-sm">--</td>
+                            <td id="selTotal" class="p-3 text-right font-mono text-blue-700 text-sm">--</td>
+                        </tr>
+                        <tr class="text-[9px] text-gray-400">
+                            <td class="p-3 italic uppercase">Effective $/kWh</td>
+                            <td id="stdEff" class="p-3 text-right font-mono">--</td>
+                            <td id="selEff" class="p-3 text-right font-mono">--</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="p-3 bg-gray-50 text-center border-t border-gray-100">
+                    <button onclick="window.toggleDetails()" class="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider flex items-center justify-center gap-1 mx-auto">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        See Bill Details
+                    </button>
+                </div>
+            </div>
+
+            <!-- Savings card -->
+            <div id="savingsCard" class="rounded-xl p-4 text-center transition-colors duration-300">
+                <h2 id="savingsLabel" class="text-[10px] font-bold uppercase mb-1">Estimated Savings</h2>
+                <div id="savingsAmount" class="text-4xl font-black">--</div>
+                <p id="savingsPercent" class="text-xs font-bold mt-1 uppercase tracking-tight">--</p>
+            </div>
         </section>
 
         <div class="text-center">
@@ -238,6 +283,12 @@
     let parsedMonthlyData = {};
     /** @type {Map<number, number>} Timestamp (ms) → kWh for each raw interval reading. */
     let globalIntervals = new Map();
+    /** @type {Object<number, {totalKwh:number, onPeakKwh:number, offPeakKwh:number, peakKw:number, peakKwOff:number, updatedAt:number}>} Per-month manual overrides. */
+    let monthManualData = {};
+    /** @type {Object<number, 'auto'|'manual'|'upload'>} Per-month source preference. */
+    let monthSourcePref = {};
+    /** @type {Object<number, number>} Per-month upload-processed timestamp (ms). */
+    let uploadUpdatedAt = {};
 
     // --- Core Functions (Defined BEFORE use) ---
     function updateDOM(keys) {
@@ -278,8 +329,11 @@
         monthSelect.value = state.billMonth;
     }
 
-    function loadMonthFromHistory(key) {
-        const data = parsedMonthlyData[key];
+    function loadMonthForFocused(monthKey) {
+        const mIdx = monthKey === 'rolling' ? null : parseInt(monthKey);
+        if (mIdx === null) return;
+        // Prefer manual override; fall back to upload data.
+        const data = monthManualData[mIdx] || parsedMonthlyData[mIdx];
         if (!data) return;
         Object.assign(state, {
             totalKwh: data.totalKwh,
@@ -289,6 +343,81 @@
             peakKwOff: data.peakKwOff
         });
         updateDOM(['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw', 'peakKwOff']);
+    }
+
+    /**
+     * Returns the resolved data source for a given month key.
+     * @param {string} monthKey
+     * @returns {'upload'|'manual'|'estimated'}
+     */
+    function resolveSource(monthKey) {
+        if (monthKey === 'rolling') return 'estimated';
+        const mIdx = parseInt(monthKey);
+        const pref = monthSourcePref[mIdx] || 'auto';
+        const hasUpload = !!(parsedMonthlyData[mIdx] && parsedMonthlyData[mIdx].days >= 20);
+        const hasManual = !!monthManualData[mIdx];
+        if (pref === 'upload') return hasUpload ? 'upload' : 'estimated';
+        if (pref === 'manual') return hasManual ? 'manual' : 'estimated';
+        // auto: last-updated wins
+        if (hasUpload && hasManual) {
+            return (uploadUpdatedAt[mIdx] || 0) >= (monthManualData[mIdx].updatedAt || 0) ? 'upload' : 'manual';
+        }
+        if (hasUpload) return 'upload';
+        if (hasManual) return 'manual';
+        return 'estimated';
+    }
+
+    /**
+     * Gets data and source for a specific month index, for use in the annual chart.
+     * @param {number} mIdx
+     * @param {number} refWeight - SEASON_WEIGHTS value for the reference month.
+     * @returns {{totalKwh:number, onPeakKwh:number, offPeakKwh:number, peakKw:number, peakKwOff:number, source:string}}
+     */
+    function getMonthData(mIdx, refWeight) {
+        const source = resolveSource(mIdx.toString());
+        if (source === 'upload') return { ...parsedMonthlyData[mIdx], source: 'upload' };
+        if (source === 'manual') return { ...monthManualData[mIdx], source: 'manual' };
+        const r = SEASON_WEIGHTS[mIdx] / refWeight;
+        return {
+            totalKwh: state.totalKwh * r,
+            onPeakKwh: state.onPeakKwh * r,
+            offPeakKwh: state.offPeakKwh * r,
+            peakKw: state.peakKw * Math.pow(r, 0.6),
+            peakKwOff: state.peakKwOff * Math.pow(r, 0.6),
+            source: 'estimated'
+        };
+    }
+
+    /**
+     * Returns resolved usage data for the currently focused month.
+     * @returns {{usage: object, source: string}}
+     */
+    function getResolvedUsageForFocused() {
+        const mKey = state.billMonth;
+        const mIdx = mKey === 'rolling' ? null : parseInt(mKey);
+        const source = resolveSource(mKey);
+        if (source === 'upload' && mIdx !== null && parsedMonthlyData[mIdx]) {
+            return { usage: parsedMonthlyData[mIdx], source: 'upload' };
+        }
+        if (source === 'manual' && mIdx !== null && monthManualData[mIdx]) {
+            return { usage: monthManualData[mIdx], source: 'manual' };
+        }
+        return { usage: state, source: 'estimated' };
+    }
+
+    /** Records current form values as a manual override for the focused month. */
+    function recordManualOverride() {
+        const mKey = state.billMonth;
+        if (mKey === 'rolling') return;
+        const mIdx = parseInt(mKey);
+        monthManualData[mIdx] = {
+            totalKwh: state.totalKwh,
+            onPeakKwh: state.onPeakKwh,
+            offPeakKwh: state.offPeakKwh,
+            peakKw: state.peakKw,
+            peakKwOff: state.peakKwOff,
+            updatedAt: Date.now()
+        };
     }
 
     // --- State Proxy ---
@@ -302,8 +431,8 @@
                 target.offPeakKwh = target.totalKwh - target.onPeakKwh;
                 updateDOM(['onPeakKwh', 'offPeakKwh']);
             }
-            if (prop === 'billMonth' && parsedMonthlyData && parsedMonthlyData[target.billMonth]) {
-                loadMonthFromHistory(target.billMonth);
+            if (prop === 'billMonth' && parsedMonthlyData && (parsedMonthlyData[target.billMonth] || monthManualData[parseInt(target.billMonth)])) {
+                loadMonthForFocused(target.billMonth);
             }
             syncToUrl();
             render();
@@ -372,8 +501,8 @@
         };
     }
 
-    function renderDetails() {
-        const cur = calculate(state, state.billMonth);
+    function renderDetails(resolvedUsage = state) {
+        const cur = calculate(resolvedUsage, state.billMonth);
         const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
         const det = cur.details;
         let monthIdx = state.billMonth === 'rolling' ? 0 : parseInt(state.billMonth);
@@ -417,12 +546,12 @@
                         <div class="flex justify-between text-[11px] font-bold text-blue-800 uppercase tracking-wider mb-1">Demand Charges</div>
                         <div class="flex justify-between">
                             <span>Peak Demand</span>
-                            <span class="text-[10px] text-gray-400 mt-0.5">${parseFloat(state.peakKw).toFixed(2)} kW @ $${isSum ? CONST.SUMMER_DEMAND.toFixed(2) : CONST.WINTER_DEMAND.toFixed(2)}</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${parseFloat(resolvedUsage.peakKw).toFixed(2)} kW @ $${isSum ? CONST.SUMMER_DEMAND.toFixed(2) : CONST.WINTER_DEMAND.toFixed(2)}</span>
                             <span class="font-mono font-bold text-blue-700">${fmt(det.demandPeakCost)}</span>
                         </div>
                         <div class="flex justify-between">
                             <span>Off-Peak Demand</span>
-                            <span class="text-[10px] text-gray-400 mt-0.5">${parseFloat(state.peakKwOff).toFixed(2)} kW @ $${CONST.DEMAND_OFF_PEAK.toFixed(3)}</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${parseFloat(resolvedUsage.peakKwOff).toFixed(2)} kW @ $${CONST.DEMAND_OFF_PEAK.toFixed(3)}</span>
                             <span class="font-mono font-bold text-blue-700">${fmt(det.demandOffCost)}</span>
                         </div>
                     </div>
@@ -434,11 +563,11 @@
                         ${detailRow('Merchant Function Charge', det.selMFC)}
                         <div class="flex justify-between text-gray-400 italic"><span>Taxes & Surcharges</span><span class="font-mono">${fmt(selTax)}</span></div>
                     </div>
-                    ${(cur.credits.onPeak > 0 || cur.credits.offPeak > 0 || state.onPeakKwh < 0 || state.offPeakKwh < 0) ? `
+                    ${(cur.credits.onPeak > 0 || cur.credits.offPeak > 0 || resolvedUsage.onPeakKwh < 0 || resolvedUsage.offPeakKwh < 0) ? `
                     <div class="bg-green-50/50 p-2 rounded-lg space-y-1 my-2 border border-green-100">
                         <div class="flex justify-between text-[11px] font-bold text-green-800 uppercase tracking-wider mb-1">☀️ Net Metering</div>
-                        ${state.onPeakKwh < 0 ? `<div class="flex justify-between text-green-700"><span>On-Peak Export</span><span class="font-mono">${Math.abs(Math.round(state.onPeakKwh))} kWh</span></div>` : ''}
-                        ${state.offPeakKwh < 0 ? `<div class="flex justify-between text-green-700"><span>Off-Peak Export</span><span class="font-mono">${Math.abs(Math.round(state.offPeakKwh))} kWh</span></div>` : ''}
+                        ${resolvedUsage.onPeakKwh < 0 ? `<div class="flex justify-between text-green-700"><span>On-Peak Export</span><span class="font-mono">${Math.abs(Math.round(resolvedUsage.onPeakKwh))} kWh</span></div>` : ''}
+                        ${resolvedUsage.offPeakKwh < 0 ? `<div class="flex justify-between text-green-700"><span>Off-Peak Export</span><span class="font-mono">${Math.abs(Math.round(resolvedUsage.offPeakKwh))} kWh</span></div>` : ''}
                         ${cur.credits.onPeak > 0 ? `<div class="flex justify-between text-green-600"><span>On-Peak Credit Bank</span><span class="font-mono font-bold">${Math.round(cur.credits.onPeak)} kWh</span></div>` : ''}
                         ${cur.credits.offPeak > 0 ? `<div class="flex justify-between text-green-600"><span>Off-Peak Credit Bank</span><span class="font-mono font-bold">${Math.round(cur.credits.offPeak)} kWh</span></div>` : ''}
                         <div class="text-[9px] text-green-600 italic mt-1">Credits carry forward to reduce future bills</div>
@@ -477,31 +606,14 @@
             }
         
             let yStd=0, ySel=0;
-            let chartLabels = [], chartStd = [], chartSel = [], chartColors = [];
+            let chartLabels = [], chartStd = [], chartSel = [], chartSources = [];
     
             // Track net metering credits across months
             let credits = { onPeak: 0, offPeak: 0, general: 0 };
             
             MONTH_NAMES.forEach((m, i) => {
-                let dataForMonth;
-                let isReal = false;
-    
-                if (parsedMonthlyData[i] && parsedMonthlyData[i].days >= 20) {
-                    dataForMonth = parsedMonthlyData[i];
-                    isReal = true;
-                } else {
-                    const r = SEASON_WEIGHTS[i] / refWeight;
-                    dataForMonth = {
-                        totalKwh: state.totalKwh * r,
-                        onPeakKwh: state.onPeakKwh * r,
-                        offPeakKwh: state.offPeakKwh * r,
-                        peakKw: state.peakKw * Math.pow(r, 0.6),
-                        peakKwOff: state.peakKwOff * Math.pow(r, 0.6)
-                    };
-                }
-    
-                // Pass credits to calculate, then carry forward any new credits
-                const est = calculate(dataForMonth, i.toString(), credits);
+                const monthData = getMonthData(i, refWeight);
+                const est = calculate(monthData, i.toString(), credits);
                 credits = est.credits;
                 
                 yStd += est.stdTotal; 
@@ -510,8 +622,11 @@
                 chartLabels.push(m);
                 chartStd.push(est.stdTotal);
                 chartSel.push(est.selTotal);
-                chartColors.push(isReal ? '#4285f4' : '#d1d5db'); 
+                chartSources.push(monthData.source);
             });
+
+            const PROVENANCE_COLORS = { upload: '#4285f4', manual: '#a855f7', estimated: '#d1d5db' };
+            const selColors = chartSources.map(s => PROVENANCE_COLORS[s] || '#d1d5db');
             
             const setTxt = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
             setTxt('yearlyStd', `$${yStd.toLocaleString(undefined, {maximumFractionDigits:0})}`);
@@ -521,8 +636,12 @@
             const prefix = ySav >= 0 ? "SELECT PLAN SAVES" : "SELECT PLAN COSTS EXTRA";
             setTxt('yearlySavings', `${prefix} $${Math.abs(ySav).toLocaleString(undefined, { maximumFractionDigits: 0 })} (${annualPct.toFixed(1)}%)`);
             
-            const realCount = Object.keys(parsedMonthlyData).filter(k=>parsedMonthlyData[k].days>=20).length;
-            setTxt('baseMonthLabel', realCount > 0 ? `${realCount} Verified Months + Estimates` : (MONTH_NAMES[state.billMonth] || "Estimated"));
+            const uploadCount = Object.keys(parsedMonthlyData).filter(k => parsedMonthlyData[k]?.days >= 20).length;
+            const manualCount = Object.keys(monthManualData).length;
+            const baseLabel = uploadCount > 0 ? `${uploadCount} Uploaded + Estimates` :
+                              manualCount > 0 ? `${manualCount} Manual + Estimates` :
+                              (MONTH_NAMES[state.billMonth] || 'Estimated');
+            setTxt('baseMonthLabel', baseLabel);
     
             chartInstance = new Chart(ctx, {
                 type: 'bar',
@@ -530,13 +649,27 @@
                     labels: chartLabels, 
                     datasets: [
                         { label: 'Standard', data: chartStd, backgroundColor: '#9ca3af', order: 2 },
-                        { label: 'Select (Verified)', data: chartSel, backgroundColor: chartColors.map(c => c === '#4285f4' ? '#4285f4' : 'transparent'), borderColor: '#4285f4', borderWidth: {top:0, right:0, bottom:0, left:0}, order: 1 },
-                        { label: 'Select (Estimated)', data: chartSel, backgroundColor: chartColors.map(c => c === '#d1d5db' ? '#d1d5db' : 'transparent'), order: 3 }
+                        { label: 'Select', data: chartSel, backgroundColor: selColors, order: 1 }
                     ] 
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: true, labels: { boxWidth: 10, font: { size: 10 } } }, tooltip: { mode: 'index', intersect: false } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            mode: 'index', intersect: false,
+                            callbacks: {
+                                afterBody: (items) => {
+                                    const i = items[0]?.dataIndex;
+                                    if (i !== undefined) {
+                                        const src = chartSources[i];
+                                        return [`Source: ${src.charAt(0).toUpperCase() + src.slice(1)}`];
+                                    }
+                                    return [];
+                                }
+                            }
+                        }
+                    },
                     scales: { x: { stacked: false, grid: { display: false } }, y: { beginAtZero: true, display: false } }
                 }
             });
@@ -583,7 +716,8 @@
 
     function render() {
         if (!state.billMonth) state.billMonth = '11';
-        const cur = calculate(state, state.billMonth);
+        const { usage: resolvedUsage, source: resolvedSrc } = getResolvedUsageForFocused();
+        const cur = calculate(resolvedUsage, state.billMonth);
         const savings = cur.stdTotal - cur.selTotal;
         const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
         const fmt0 = (v) => `$${v.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
@@ -593,14 +727,13 @@
         setTxt('stdDel', fmt(cur.stdDel));
         setTxt('stdSup', fmt(cur.stdSup));
         setTxt('stdTotal', fmt(cur.stdTotal));
-        setTxt('stdEff', `$${(cur.stdTotal/(state.totalKwh||1)).toFixed(3)}`);
+        setTxt('stdEff', `$${(cur.stdTotal/(resolvedUsage.totalKwh||1)).toFixed(3)}`);
         setTxt('selDel', fmt(cur.selDel));
         setTxt('selSup', fmt(cur.selSup));
         setTxt('selTotal', fmt(cur.selTotal));
-        setTxt('selEff', `$${(cur.selTotal/(state.totalKwh||1)).toFixed(3)}`);
+        setTxt('selEff', `$${(cur.selTotal/(resolvedUsage.totalKwh||1)).toFixed(3)}`);
 
         let monthIdx = state.billMonth === 'rolling' ? 0 : parseInt(state.billMonth);
-        const isSum = (monthIdx >= 5 && monthIdx <= 8);
 
         const card = document.getElementById('savingsCard');
         const sl = document.getElementById('savingsLabel');
@@ -608,7 +741,7 @@
         const sp = document.getElementById('savingsPercent');
 
         if (savings >= 0) {
-            card.className = 'card bg-green-50 border-green-100 text-center';
+            card.className = 'rounded-xl p-4 bg-green-50 border border-green-100 text-center transition-colors duration-300';
             sl.className = 'text-[10px] font-bold uppercase text-green-600 mb-1';
             sl.textContent = `Estimated Savings for ${state.billMonth === 'rolling' ? 'Rolling Year' : MONTH_NAMES[monthIdx]}`;
             sa.className = 'text-4xl font-black text-green-700';
@@ -616,7 +749,7 @@
             sp.className = 'text-xs font-bold text-green-600 mt-1 uppercase tracking-tight';
             sp.textContent = `SELECT PLAN SAVES ${((savings / cur.stdTotal) * 100).toFixed(1)}%`;
         } else {
-            card.className = 'card bg-orange-50 border-orange-100 text-center';
+            card.className = 'rounded-xl p-4 bg-orange-50 border border-orange-100 text-center transition-colors duration-300';
             sl.className = 'text-[10px] font-bold uppercase text-orange-600 mb-1';
             sl.textContent = `Extra Cost for ${state.billMonth === 'rolling' ? 'Rolling Year' : MONTH_NAMES[monthIdx]}`;
             sa.className = 'text-4xl font-black text-orange-700';
@@ -625,8 +758,66 @@
             sp.textContent = `SELECT PLAN COSTS AN EXTRA ${((Math.abs(savings) / cur.stdTotal) * 100).toFixed(1)}%`;
         }
 
+        renderInlineSummary(cur, resolvedSrc);
+        renderSourceSelector();
         renderAnnualChart();
-        if (!document.getElementById('detailsModal').classList.contains('hidden')) renderDetails();
+        if (!document.getElementById('detailsModal').classList.contains('hidden')) renderDetails(resolvedUsage);
+    }
+
+    /** Renders the source selector buttons for the currently focused month. */
+    function renderSourceSelector() {
+        const mKey = state.billMonth;
+        const mIdx = mKey === 'rolling' ? null : parseInt(mKey);
+        const pref = mIdx !== null ? (monthSourcePref[mIdx] || 'auto') : 'auto';
+        const hasUpload = mIdx !== null && !!(parsedMonthlyData[mIdx] && parsedMonthlyData[mIdx].days >= 20);
+
+        const btnAuto   = document.getElementById('srcAuto');
+        const btnManual = document.getElementById('srcManual');
+        const btnUpload = document.getElementById('srcUpload');
+        if (!btnAuto) return;
+
+        [btnAuto, btnManual, btnUpload].forEach(b => b.classList.remove('active'));
+        if (pref === 'auto')   btnAuto.classList.add('active');
+        if (pref === 'manual') btnManual.classList.add('active');
+        if (pref === 'upload') btnUpload.classList.add('active');
+        btnUpload.disabled = !hasUpload;
+    }
+
+    /**
+     * Renders the compact inline monthly summary card.
+     * @param {{stdTotal:number, selTotal:number}} cur
+     * @param {'upload'|'manual'|'estimated'} source
+     */
+    function renderInlineSummary(cur, source) {
+        const el = document.getElementById('inlineSummary');
+        if (!el) return;
+        const fmt = (v) => `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        const savings = cur.stdTotal - cur.selTotal;
+        const savPos = savings >= 0;
+        const mIdx = state.billMonth === 'rolling' ? null : parseInt(state.billMonth);
+        const monthLabel = state.billMonth === 'rolling' ? 'Rolling Year' : (MONTH_NAMES[mIdx] ?? '--');
+        // NOTE: source is a trusted internal string, never user input.
+        const badgeClass = { upload: 'bg-blue-100 text-blue-700', manual: 'bg-purple-100 text-purple-700', estimated: 'bg-gray-100 text-gray-500' }[source] || 'bg-gray-100 text-gray-500';
+        const badgeLabel = source.charAt(0).toUpperCase() + source.slice(1);
+        el.innerHTML = `
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-bold text-gray-800">${monthLabel}</span>
+                <span class="${badgeClass} text-[9px] font-bold px-1.5 py-0.5 rounded-full">${badgeLabel}</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-center">
+                <div>
+                    <div class="text-[9px] text-gray-400 uppercase font-bold">Standard</div>
+                    <div class="font-mono font-semibold text-gray-600">${fmt(cur.stdTotal)}</div>
+                </div>
+                <div>
+                    <div class="text-[9px] text-gray-400 uppercase font-bold">Select</div>
+                    <div class="font-mono font-semibold text-blue-700">${fmt(cur.selTotal)}</div>
+                </div>
+                <div>
+                    <div class="text-[9px] ${savPos ? 'text-green-600' : 'text-orange-600'} uppercase font-bold">${savPos ? 'Saves' : 'Extra'}</div>
+                    <div class="font-mono font-semibold ${savPos ? 'text-green-700' : 'text-orange-700'}">${fmt(Math.abs(savings))}</div>
+                </div>
+            </div>`;
     }
 
     function syncToUrl() {
@@ -753,6 +944,8 @@
                 label: MONTH_NAMES[mIdx],
                 days: m.days.size
             };
+            // Record the timestamp when this month's upload was processed.
+            uploadUpdatedAt[mIdx] = Date.now();
         });
 
         initDropdown();
@@ -889,7 +1082,8 @@
         const modal = document.getElementById('detailsModal');
         if (modal.classList.contains('hidden')) {
             modal.classList.remove('hidden');
-            renderDetails();
+            const { usage } = getResolvedUsageForFocused();
+            renderDetails(usage);
         } else {
             modal.classList.add('hidden');
         }
@@ -898,6 +1092,9 @@
     window.clearData = function() {
         parsedMonthlyData = {};
         globalIntervals.clear();
+        monthManualData = {};
+        monthSourcePref = {};
+        uploadUpdatedAt = {};
         initDropdown();
         
         Object.keys(DEFAULT_STATE).forEach(key => {
@@ -912,6 +1109,33 @@
         ds.className = "text-[10px] text-gray-400";
         history.replaceState(null, '', window.location.pathname);
     };
+
+    /** Sets the source preference for the currently focused month and re-renders. */
+    window.setSourcePref = function(pref) {
+        const mKey = state.billMonth;
+        if (mKey === 'rolling') return;
+        monthSourcePref[parseInt(mKey)] = pref;
+        render();
+    };
+
+    /** Switches between Upload and Manual Entry input tabs. */
+    window.switchTab = function(tab) {
+        const panelUpload = document.getElementById('panelUpload');
+        const panelManual = document.getElementById('panelManual');
+        const tabUpload   = document.getElementById('tabUpload');
+        const tabManual   = document.getElementById('tabManual');
+        if (tab === 'upload') {
+            panelUpload.classList.remove('hidden');
+            panelManual.classList.add('hidden');
+            tabUpload.classList.add('active');
+            tabManual.classList.remove('active');
+        } else {
+            panelUpload.classList.add('hidden');
+            panelManual.classList.remove('hidden');
+            tabUpload.classList.remove('active');
+            tabManual.classList.add('active');
+        }
+    };
     
     // --- Window Assignments ---
     // clearData and reset are aliases; toggleDetails/toggleHelp are already set above.
@@ -923,10 +1147,17 @@
         render();
     };
 
-    ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw', 'peakKwOff', 'billMonth'].forEach(id => {
+    // Manual fields record an override for the focused month on user input.
+    const MANUAL_FIELD_IDS = ['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw', 'peakKwOff'];
+    MANUAL_FIELD_IDS.forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener('input', (e) => state[id] = e.target.value);
+        if (el) el.addEventListener('input', (e) => {
+            state[id] = e.target.value;
+            recordManualOverride();
+        });
     });
+    const billMonthEl = document.getElementById('billMonth');
+    if (billMonthEl) billMonthEl.addEventListener('input', (e) => state['billMonth'] = e.target.value);
     
     const dropZone = document.getElementById('dropZone');
     if (dropZone) {
