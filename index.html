@@ -399,8 +399,10 @@
          * @returns {string} HTML string for the row.
          */
         const detailRow = (label, amount, rateNote = '') => {
-            const rate = rateNote ? `<span class="text-[10px] text-gray-400 mt-0.5">${rateNote}</span>` : '';
-            return `<div class="flex justify-between"><span>${label}</span>${rate}<span class="font-mono">${fmt(amount)}</span></div>`;
+            const rateLine = rateNote
+                ? `<div class="pl-4 text-[10px] text-gray-400 leading-tight mt-0.5">${rateNote}</div>`
+                : '';
+            return `<div><div class="flex justify-between"><span>${label}</span><span class="font-mono">${fmt(amount)}</span></div>${rateLine}</div>`;
         };
 
         const html = `
