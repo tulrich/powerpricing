@@ -97,15 +97,17 @@
         </section>
 
         <!-- ─── DATA VIZ ─────────────────────────────────────────────── -->
-        <section id="historyCard" class="card hidden border-blue-100 bg-blue-50/30">
+        <section id="historyCard" class="card border-blue-100 bg-blue-50/30">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xs font-bold uppercase tracking-wider text-blue-800">Data Profile</h2>
                 <button onclick="window.clearData()" class="text-[10px] text-red-500 hover:text-red-700 underline">Clear Uploads</button>
             </div>
-            <div class="h-48">
+            <div id="historyChartWrap" class="h-48 hidden">
                 <canvas id="historyChart"></canvas>
             </div>
-            <p id="historyMeta" class="text-[9px] text-center text-gray-400 mt-2 italic">Blue = Verified (&gt;20 days) • Gray = Partial/Gap</p>
+            <p id="historyEmpty" class="text-[10px] text-center text-gray-400 italic py-4">No data yet — upload files or enter values manually above.</p>
+            <p id="historyMeta" class="text-[9px] text-center text-gray-400 mt-2 italic hidden">Bars: yellow/blue = upload · purple = manual · gray = estimated &nbsp;|&nbsp; Buttons: <strong>A</strong>=auto <strong>M</strong>=manual <strong>U</strong>=upload</p>
+            <div id="historyMonthBtns" class="flex justify-around mt-2 hidden"></div>
         </section>
 
         <section id="yearlyCard" class="card border-dashed border-2 border-gray-200 bg-gray-50/50">
@@ -421,6 +423,7 @@
             peakKwOff: state.peakKwOff,
             updatedAt: Date.now()
         };
+        renderHistoryChart();
     }
 
     // --- State Proxy ---
@@ -678,42 +681,140 @@
             });
         }
 
-    function renderHistoryChart(monthlyData) {
-        if (typeof Chart === 'undefined') return;
+    /** Returns sorted month keys present in either uploaded or manual data. */
+    function getHistoryKeys() {
+        const s = new Set([
+            ...Object.keys(parsedMonthlyData).filter(k => k !== 'rolling'),
+            ...Object.keys(monthManualData)
+        ]);
+        return [...s].sort((a, b) => parseInt(a) - parseInt(b));
+    }
+
+    /**
+     * Renders the Data Profile chart using all available data sources (uploaded + manual).
+     * Shows/hides the chart, empty placeholder, and per-month preference buttons accordingly.
+     */
+    function renderHistoryChart() {
+        const chartWrap = document.getElementById('historyChartWrap');
+        const emptyMsg  = document.getElementById('historyEmpty');
+        const metaEl    = document.getElementById('historyMeta');
+
+        // Build merged month data: uploaded data takes precedence, manual fills gaps.
+        /** @type {Object<string, {onPeakKwh:number, offPeakKwh:number, peakKw:number, peakKwOff:number, days:number, src:string}>} */
+        const merged = {};
+        Object.keys(parsedMonthlyData).filter(k => k !== 'rolling').forEach(k => {
+            merged[k] = { ...parsedMonthlyData[k], src: 'upload' };
+        });
+        Object.keys(monthManualData).forEach(k => {
+            if (!merged[k]) {
+                const m = monthManualData[k];
+                merged[k] = {
+                    totalKwh: m.totalKwh || 0, onPeakKwh: m.onPeakKwh || 0,
+                    offPeakKwh: m.offPeakKwh || 0, peakKw: m.peakKw || 0,
+                    peakKwOff: m.peakKwOff || 0, days: 0, src: 'manual'
+                };
+            }
+        });
+
+        const keys = Object.keys(merged).sort((a, b) => parseInt(a) - parseInt(b));
+
+        // When no real data exists, synthesize one bar from the current form state as a
+        // default estimate so the chart is never blank.
+        let isDefaultEstimate = false;
+        if (keys.length === 0) {
+            isDefaultEstimate = true;
+            const mKey = state.billMonth === 'rolling' ? '11' : state.billMonth;
+            merged[mKey] = {
+                totalKwh: state.totalKwh || 0, onPeakKwh: state.onPeakKwh || 0,
+                offPeakKwh: state.offPeakKwh || 0, peakKw: state.peakKw || 0,
+                peakKwOff: state.peakKwOff || 0, days: 0, src: 'estimated'
+            };
+            keys.push(mKey);
+        }
+
+        if (chartWrap) chartWrap.classList.remove('hidden');
+        if (emptyMsg) {
+            emptyMsg.textContent = isDefaultEstimate
+                ? 'Default estimate — upload files or enter manual values above to replace.'
+                : '';
+            emptyMsg.classList.toggle('hidden', !isDefaultEstimate);
+        }
+        if (metaEl) metaEl.classList.remove('hidden');
+
+        if (typeof Chart === 'undefined') { renderHistoryMonthBtns(isDefaultEstimate ? [] : keys); return; }
         const ctx = document.getElementById('historyChart').getContext('2d');
         if (historyChartInstance) historyChartInstance.destroy();
 
-        const keys = Object.keys(monthlyData).filter(k => k !== 'rolling').sort((a,b)=>parseInt(a)-parseInt(b));
-        const labels = keys.map(k => `${MONTH_NAMES[k]} (${monthlyData[k].days}d)`);
-        
+        const labels = keys.map(k => merged[k].days > 0 ? `${MONTH_NAMES[k]} (${merged[k].days}d)` : MONTH_NAMES[k]);
+
+        // Per-bar colors: upload = yellow/blue, manual = purple, estimated = gray.
+        const onPeakColors  = keys.map(k => merged[k].src === 'manual' ? '#c084fc' : merged[k].src === 'estimated' ? '#d1d5db' : '#fcd34d');
+        const offPeakColors = keys.map(k => merged[k].src === 'manual' ? '#ddd6fe' : merged[k].src === 'estimated' ? '#e5e7eb' : '#93c5fd');
+
         // Calculate max values to synchronize axes (kW scale = kWh scale / 540 for 75% load factor alignment)
-        // Either dataset can set the chart max, but the ratio is always 540
-        const dataMaxKwh = Math.max(...keys.map(k => monthlyData[k].onPeakKwh + monthlyData[k].offPeakKwh));
-        const dataMaxKw = Math.max(...keys.map(k => Math.max(monthlyData[k].peakKw, monthlyData[k].peakKwOff)));
-        // Determine the effective max: whichever is larger when scaled
-        const maxKwh = Math.max(dataMaxKwh, dataMaxKw * 540);
-        const maxKw = maxKwh / 540;
-        
+        const dataMaxKwh = Math.max(...keys.map(k => (merged[k].onPeakKwh || 0) + (merged[k].offPeakKwh || 0)));
+        const dataMaxKw  = Math.max(...keys.map(k => Math.max(merged[k].peakKw || 0, merged[k].peakKwOff || 0)));
+        const maxKwh = Math.max(dataMaxKwh, dataMaxKw * 540, 1);
+        const maxKw  = maxKwh / 540;
+
         historyChartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: labels,
+                labels,
                 datasets: [
-                    { label: 'On-Peak kWh', data: keys.map(k => monthlyData[k].onPeakKwh), backgroundColor: '#fcd34d', stack: '0', yAxisID: 'y', order: 2 },
-                    { label: 'Off-Peak kWh', data: keys.map(k => monthlyData[k].offPeakKwh), backgroundColor: '#93c5fd', stack: '0', yAxisID: 'y', order: 2 },
-                    { label: 'Peak Demand (kW)', data: keys.map(k => monthlyData[k].peakKw), type: 'line', borderColor: '#f59e0b', backgroundColor: '#f59e0b', borderWidth: 2, pointRadius: 4, pointStyle: 'circle', yAxisID: 'y1', tension: 0.1, order: 1 },
-                    { label: 'Off-Peak Demand (kW)', data: keys.map(k => monthlyData[k].peakKwOff), type: 'line', borderColor: '#3b82f6', backgroundColor: '#3b82f6', borderWidth: 2, pointRadius: 4, pointStyle: 'circle', yAxisID: 'y1', tension: 0.1, order: 1 }
+                    { label: 'On-Peak kWh',       data: keys.map(k => merged[k].onPeakKwh  || 0), backgroundColor: onPeakColors,  stack: '0', yAxisID: 'y',  order: 2 },
+                    { label: 'Off-Peak kWh',      data: keys.map(k => merged[k].offPeakKwh || 0), backgroundColor: offPeakColors, stack: '0', yAxisID: 'y',  order: 2 },
+                    { label: 'Peak Demand (kW)',   data: keys.map(k => merged[k].peakKw     || 0), type: 'line', borderColor: '#f59e0b', backgroundColor: '#f59e0b', borderWidth: 2, pointRadius: 4, pointStyle: 'circle', yAxisID: 'y1', tension: 0.1, order: 1 },
+                    { label: 'Off-Peak Demand (kW)', data: keys.map(k => merged[k].peakKwOff || 0), type: 'line', borderColor: '#3b82f6', backgroundColor: '#3b82f6', borderWidth: 2, pointRadius: 4, pointStyle: 'circle', yAxisID: 'y1', tension: 0.1, order: 1 }
                 ]
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: {
-                    x: { stacked: true, grid: { display: false } },
-                    y: { stacked: true, position: 'left', title: { display: true, text: 'kWh', font: { size: 9 } }, min: 0, max: maxKwh * 1.1 },
+                    x:  { stacked: true, grid: { display: false } },
+                    y:  { stacked: true, position: 'left',  title: { display: true, text: 'kWh', font: { size: 9 } }, min: 0, max: maxKwh * 1.1 },
                     y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'kW', font: { size: 9 } }, min: 0, max: maxKw * 1.1 }
                 },
                 plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 8, font: { size: 9 } } } }
             }
+        });
+        renderHistoryMonthBtns(isDefaultEstimate ? [] : keys);
+    }
+
+    /**
+     * Renders small per-month source-preference toggle buttons beneath the Data Profile chart.
+     * @param {string[]} keys - sorted month index strings to show buttons for
+     */
+    function renderHistoryMonthBtns(keys) {
+        const container = document.getElementById('historyMonthBtns');
+        if (!container) return;
+        container.innerHTML = '';
+        if (!keys || keys.length === 0) { container.classList.add('hidden'); return; }
+        container.classList.remove('hidden');
+        keys.forEach(k => {
+            const mIdx = parseInt(k);
+            const pref      = monthSourcePref[mIdx] || 'auto';
+            const hasUpload = !!(parsedMonthlyData[mIdx] && parsedMonthlyData[mIdx].days >= 20);
+            const hasManual = !!monthManualData[mIdx];
+
+            let label, colorClass;
+            if (pref === 'upload') {
+                label = 'U'; colorClass = hasUpload ? 'border-blue-300 text-blue-600 bg-blue-50' : 'border-gray-200 text-gray-300 bg-white';
+            } else if (pref === 'manual') {
+                label = 'M'; colorClass = hasManual ? 'border-purple-300 text-purple-600 bg-purple-50' : 'border-gray-200 text-gray-300 bg-white';
+            } else {
+                label = 'A'; colorClass = 'border-gray-300 text-gray-500 bg-gray-50';
+            }
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex flex-col items-center flex-1 min-w-0';
+            const btn = document.createElement('button');
+            btn.className = `text-[8px] font-bold uppercase px-1 py-0.5 rounded-full border transition-all ${colorClass}`;
+            btn.textContent = label;
+            btn.title = `${MONTH_NAMES[mIdx]}: ${pref} — click to cycle`;
+            btn.onclick = () => window.cycleMonthPref(mIdx);
+            wrapper.appendChild(btn);
+            container.appendChild(wrapper);
         });
     }
 
@@ -764,6 +865,14 @@
         renderInlineSummary(cur, resolvedSrc);
         renderSourceSelector();
         renderAnnualChart();
+        // Re-render the history chart only when in default-estimate mode (no real data),
+        // so the displayed bar tracks the selected month and current state values.
+        const historyKeys = getHistoryKeys();
+        if (historyKeys.length === 0) {
+            renderHistoryChart();
+        } else {
+            renderHistoryMonthBtns(historyKeys);
+        }
         if (!document.getElementById('detailsModal').classList.contains('hidden')) renderDetails(resolvedUsage);
     }
 
@@ -857,8 +966,7 @@
                 
                 document.getElementById('dropStatus').textContent = `✅ Loaded shared data (${Object.keys(parsedMonthlyData).length} months)`;
                 document.getElementById('dropStatus').className = "text-[10px] text-green-600 font-bold";
-                document.getElementById('historyCard').classList.remove('hidden');
-                renderHistoryChart(parsedMonthlyData);
+                renderHistoryChart();
             } catch(e) { console.error(e); }
         } else if (hash) {
             const p = new URLSearchParams(hash);
@@ -959,13 +1067,12 @@
         else if (parsedMonthlyData['rolling']) state.billMonth = 'rolling';
         else if (keys.length) state.billMonth = keys[0].toString();
 
-        renderHistoryChart(parsedMonthlyData);
+        renderHistoryChart();
         
         const count = Object.keys(parsedMonthlyData).filter(k=>k!=='rolling').length;
         const ds = document.getElementById('dropStatus');
         ds.textContent = `✅ Merged ${count} months. Total intervals: ${globalIntervals.size}`;
         ds.className = "text-[10px] text-green-600 font-bold";
-        document.getElementById('historyCard').classList.remove('hidden');
         render(); 
     }
 
@@ -1105,7 +1212,8 @@
         state.billMonth = '11';
         updateDOM(Object.keys(DEFAULT_STATE));
 
-        document.getElementById('historyCard').classList.add('hidden');
+        document.getElementById('historyCard').classList.remove('hidden');
+        renderHistoryChart();
         const ds = document.getElementById('dropStatus');
         ds.textContent = "Drop \"Export usage\" files here to accumulate history";
         ds.className = "text-[10px] text-gray-400";
@@ -1117,6 +1225,20 @@
         const mKey = state.billMonth;
         if (mKey === 'rolling') return;
         monthSourcePref[parseInt(mKey)] = pref;
+        render();
+    };
+
+    /** Cycles the source preference for a given month index through available options and re-renders.
+     *  Cycle order: 'auto' → 'manual' (if available) → 'upload' (if available) → 'auto'.
+     */
+    window.cycleMonthPref = function(mIdx) {
+        const current   = monthSourcePref[mIdx] || 'auto';
+        const hasUpload = !!(parsedMonthlyData[mIdx] && parsedMonthlyData[mIdx].days >= 20);
+        const hasManual = !!monthManualData[mIdx];
+        const available = ['auto'];
+        if (hasManual) available.push('manual');
+        if (hasUpload) available.push('upload');
+        monthSourcePref[mIdx] = available[(available.indexOf(current) + 1) % available.length];
         render();
     };
 
@@ -1146,6 +1268,7 @@
     window.onload = () => {
         initDropdown();
         loadFromUrl();
+        renderHistoryChart();
         render();
     };
 
