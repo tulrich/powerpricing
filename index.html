@@ -373,24 +373,91 @@
     }
 
     /**
-     * Gets data and source for a specific month index, for use in the annual chart.
-     * @param {number} mIdx
-     * @param {number} refWeight - SEASON_WEIGHTS value for the reference month.
-     * @returns {{totalKwh:number, onPeakKwh:number, offPeakKwh:number, peakKw:number, peakKwOff:number, source:string}}
+     * Computes best-fit Scale and Offset for a linear seasonal model:
+     *   totalKwh ≈ scale * seasonalWeight + offset
+     * Uses ordinary least squares.  With a single data point, offset is forced to 0.
+     * @param {Array<{weight: number, totalKwh: number}>} dataPoints
+     * @returns {{scale: number, offset: number}}
      */
-    function getMonthData(mIdx, refWeight) {
-        const source = resolveSource(mIdx.toString());
-        if (source === 'upload') return { ...parsedMonthlyData[mIdx], source: 'upload' };
-        if (source === 'manual') return { ...monthManualData[mIdx], source: 'manual' };
-        const r = SEASON_WEIGHTS[mIdx] / refWeight;
-        return {
-            totalKwh: state.totalKwh * r,
-            onPeakKwh: state.onPeakKwh * r,
-            offPeakKwh: state.offPeakKwh * r,
-            peakKw: state.peakKw * Math.pow(r, 0.6),
-            peakKwOff: state.peakKwOff * Math.pow(r, 0.6),
-            source: 'estimated'
-        };
+    function fitSeasonalModel(dataPoints) {
+        const n = dataPoints.length;
+        if (n === 0) return { scale: 0, offset: 0 };
+        if (n === 1) {
+            const w = dataPoints[0].weight;
+            if (w === 0) return { scale: 0, offset: dataPoints[0].totalKwh };
+            return { scale: dataPoints[0].totalKwh / w, offset: 0 };
+        }
+        let sumX = 0, sumY = 0, sumXX = 0, sumXY = 0;
+        for (const { weight: x, totalKwh: y } of dataPoints) {
+            sumX += x; sumY += y; sumXX += x * x; sumXY += x * y;
+        }
+        const denom = n * sumXX - sumX * sumX;
+        if (Math.abs(denom) < 1e-12) {
+            // All x-values identical: best fit is a constant (scale=0, offset=mean(y)).
+            return { scale: 0, offset: sumY / n };
+        }
+        const scale = (n * sumXY - sumX * sumY) / denom;
+        const offset = (sumY - scale * sumX) / n;
+        return { scale, offset };
+    }
+
+    /**
+     * Builds a full 12-month usage array combining real data (upload/manual) with a
+     * two-parameter best-fit seasonal model for missing months.
+     *
+     * Model: totalKwh[i] ≈ scale * SEASON_WEIGHTS[i] + offset
+     *
+     * On-peak fraction and demand-per-kWh ratios are averaged from real-data months.
+     * Falls back to form-state values when no real data is available.
+     *
+     * @returns {Array<{totalKwh:number, onPeakKwh:number, offPeakKwh:number, peakKw:number, peakKwOff:number, days:number, source:'upload'|'manual'|'estimated'}>}
+     */
+    function getUsageForYear() {
+        // Step 1: collect real (non-estimated) months.
+        const realMonths = [];
+        for (let i = 0; i < 12; i++) {
+            const src = resolveSource(i.toString());
+            if (src === 'upload' && parsedMonthlyData[i]) {
+                realMonths.push({ mIdx: i, ...parsedMonthlyData[i], source: 'upload' });
+            } else if (src === 'manual' && monthManualData[i]) {
+                realMonths.push({ mIdx: i, ...monthManualData[i], source: 'manual' });
+            }
+        }
+
+        // Step 2: fit scale and offset.
+        let scale, offset;
+        if (realMonths.length === 0) {
+            const refIdx = state.billMonth === 'rolling' ? 11 : parseInt(state.billMonth);
+            scale = state.totalKwh / (SEASON_WEIGHTS[refIdx] || 1);
+            offset = 0;
+        } else {
+            const pts = realMonths.map(d => ({ weight: SEASON_WEIGHTS[d.mIdx], totalKwh: d.totalKwh }));
+            ({ scale, offset } = fitSeasonalModel(pts));
+        }
+
+        // Step 3: average on-peak fraction and demand ratios from real months.
+        const validReal = realMonths.filter(d => d.totalKwh > 0);
+        const avgRatio = (key) => validReal.length > 0 ? validReal.reduce((s, d) => s + d[key] / d.totalKwh, 0) / validReal.length : null;
+        const avgOnPeakFrac     = avgRatio('onPeakKwh') ?? 0.205;
+        const avgPeakKwRatio    = avgRatio('peakKw')    ?? 1 / 540;
+        const avgPeakKwOffRatio = avgRatio('peakKwOff') ?? 1 / 540;
+
+        // Step 4: build the 12-month array.
+        return Array.from({ length: 12 }, (_, i) => {
+            const src = resolveSource(i.toString());
+            if (src === 'upload' && parsedMonthlyData[i]) return { ...parsedMonthlyData[i], source: 'upload' };
+            if (src === 'manual' && monthManualData[i])  return { ...monthManualData[i],  source: 'manual' };
+            const totalKwh = Math.max(0, scale * SEASON_WEIGHTS[i] + offset);
+            return {
+                totalKwh,
+                onPeakKwh:  totalKwh * avgOnPeakFrac,
+                offPeakKwh: totalKwh * (1 - avgOnPeakFrac),
+                peakKw:     totalKwh * avgPeakKwRatio,
+                peakKwOff:  totalKwh * avgPeakKwOffRatio,
+                days: 0,
+                source: 'estimated'
+            };
+        });
     }
 
     /**
@@ -606,11 +673,8 @@
             const ctx = document.getElementById('annualChart').getContext('2d');
             if (chartInstance) chartInstance.destroy();
 
-            let refWeight = SEASON_WEIGHTS[11];
-            if (state.billMonth !== 'rolling' && !isNaN(parseInt(state.billMonth))) {
-                refWeight = SEASON_WEIGHTS[parseInt(state.billMonth)];
-            }
-        
+            const yearUsage = getUsageForYear();
+
             let yStd=0, ySel=0;
             let chartLabels = [], chartStd = [], chartSel = [], chartSources = [];
     
@@ -618,7 +682,7 @@
             let credits = { onPeak: 0, offPeak: 0, general: 0 };
             
             MONTH_NAMES.forEach((m, i) => {
-                const monthData = getMonthData(i, refWeight);
+                const monthData = yearUsage[i];
                 const est = calculate(monthData, i.toString(), credits);
                 credits = est.credits;
                 
@@ -681,79 +745,44 @@
             });
         }
 
-    /** Returns sorted month keys present in either uploaded or manual data. */
-    function getHistoryKeys() {
-        const s = new Set([
-            ...Object.keys(parsedMonthlyData).filter(k => k !== 'rolling'),
-            ...Object.keys(monthManualData)
-        ]);
-        return [...s].sort((a, b) => parseInt(a) - parseInt(b));
-    }
-
     /**
-     * Renders the Data Profile chart using all available data sources (uploaded + manual).
-     * Shows/hides the chart, empty placeholder, and per-month preference buttons accordingly.
+     * Renders the Data Profile chart for all 12 months using the unified year estimate.
+     * Real-data months (upload/manual) are shown in their normal colors; missing months
+     * are shown as "Estimated" in muted gray.
      */
     function renderHistoryChart() {
         const chartWrap = document.getElementById('historyChartWrap');
         const emptyMsg  = document.getElementById('historyEmpty');
         const metaEl    = document.getElementById('historyMeta');
 
-        // Build merged month data: uploaded data takes precedence, manual fills gaps.
-        /** @type {Object<string, {onPeakKwh:number, offPeakKwh:number, peakKw:number, peakKwOff:number, days:number, src:string}>} */
-        const merged = {};
-        Object.keys(parsedMonthlyData).filter(k => k !== 'rolling').forEach(k => {
-            merged[k] = { ...parsedMonthlyData[k], src: 'upload' };
-        });
-        Object.keys(monthManualData).forEach(k => {
-            if (!merged[k]) {
-                const m = monthManualData[k];
-                merged[k] = {
-                    totalKwh: m.totalKwh || 0, onPeakKwh: m.onPeakKwh || 0,
-                    offPeakKwh: m.offPeakKwh || 0, peakKw: m.peakKw || 0,
-                    peakKwOff: m.peakKwOff || 0, days: 0, src: 'manual'
-                };
-            }
-        });
-
-        const keys = Object.keys(merged).sort((a, b) => parseInt(a) - parseInt(b));
-
-        // When no real data exists, synthesize one bar from the current form state as a
-        // default estimate so the chart is never blank.
-        let isDefaultEstimate = false;
-        if (keys.length === 0) {
-            isDefaultEstimate = true;
-            const mKey = state.billMonth === 'rolling' ? '11' : state.billMonth;
-            merged[mKey] = {
-                totalKwh: state.totalKwh || 0, onPeakKwh: state.onPeakKwh || 0,
-                offPeakKwh: state.offPeakKwh || 0, peakKw: state.peakKw || 0,
-                peakKwOff: state.peakKwOff || 0, days: 0, src: 'estimated'
-            };
-            keys.push(mKey);
-        }
+        const yearData = getUsageForYear();
+        const keys = Array.from({ length: 12 }, (_, i) => i.toString());
 
         if (chartWrap) chartWrap.classList.remove('hidden');
-        if (emptyMsg) {
-            emptyMsg.textContent = isDefaultEstimate
-                ? 'Default estimate — upload files or enter manual values above to replace.'
-                : '';
-            emptyMsg.classList.toggle('hidden', !isDefaultEstimate);
-        }
+        if (emptyMsg) emptyMsg.classList.add('hidden');
         if (metaEl) metaEl.classList.remove('hidden');
 
-        if (typeof Chart === 'undefined') { renderHistoryMonthBtns(isDefaultEstimate ? [] : keys); return; }
+        if (typeof Chart === 'undefined') { renderHistoryMonthBtns(keys); return; }
         const ctx = document.getElementById('historyChart').getContext('2d');
         if (historyChartInstance) historyChartInstance.destroy();
 
-        const labels = keys.map(k => merged[k].days > 0 ? `${MONTH_NAMES[k]} (${merged[k].days}d)` : MONTH_NAMES[k]);
+        const labels = keys.map(k => {
+            const d = yearData[parseInt(k)];
+            return d.days > 0 ? `${MONTH_NAMES[parseInt(k)]} (${d.days}d)` : MONTH_NAMES[parseInt(k)];
+        });
 
         // Per-bar colors: upload = yellow/blue, manual = purple, estimated = gray.
-        const onPeakColors  = keys.map(k => merged[k].src === 'manual' ? '#c084fc' : merged[k].src === 'estimated' ? '#d1d5db' : '#fcd34d');
-        const offPeakColors = keys.map(k => merged[k].src === 'manual' ? '#ddd6fe' : merged[k].src === 'estimated' ? '#e5e7eb' : '#93c5fd');
+        const SRC_COLORS = {
+            upload:    { onPeak: '#fcd34d', offPeak: '#93c5fd' },
+            manual:    { onPeak: '#c084fc', offPeak: '#ddd6fe' },
+            estimated: { onPeak: '#d1d5db', offPeak: '#e5e7eb' },
+        };
+        const onPeakColors  = keys.map(k => (SRC_COLORS[yearData[parseInt(k)].source] || SRC_COLORS.estimated).onPeak);
+        const offPeakColors = keys.map(k => (SRC_COLORS[yearData[parseInt(k)].source] || SRC_COLORS.estimated).offPeak);
 
         // Calculate max values to synchronize axes (kW scale = kWh scale / 540 for 75% load factor alignment)
-        const dataMaxKwh = Math.max(...keys.map(k => (merged[k].onPeakKwh || 0) + (merged[k].offPeakKwh || 0)));
-        const dataMaxKw  = Math.max(...keys.map(k => Math.max(merged[k].peakKw || 0, merged[k].peakKwOff || 0)));
+        const dataMaxKwh = Math.max(...keys.map(k => (yearData[parseInt(k)].onPeakKwh || 0) + (yearData[parseInt(k)].offPeakKwh || 0)));
+        const dataMaxKw  = Math.max(...keys.map(k => Math.max(yearData[parseInt(k)].peakKw || 0, yearData[parseInt(k)].peakKwOff || 0)));
         const maxKwh = Math.max(dataMaxKwh, dataMaxKw * 540, 1);
         const maxKw  = maxKwh / 540;
 
@@ -762,10 +791,10 @@
             data: {
                 labels,
                 datasets: [
-                    { label: 'On-Peak kWh',       data: keys.map(k => merged[k].onPeakKwh  || 0), backgroundColor: onPeakColors,  stack: '0', yAxisID: 'y',  order: 2 },
-                    { label: 'Off-Peak kWh',      data: keys.map(k => merged[k].offPeakKwh || 0), backgroundColor: offPeakColors, stack: '0', yAxisID: 'y',  order: 2 },
-                    { label: 'Peak Demand (kW)',   data: keys.map(k => merged[k].peakKw     || 0), type: 'line', borderColor: '#f59e0b', backgroundColor: '#f59e0b', borderWidth: 2, pointRadius: 4, pointStyle: 'circle', yAxisID: 'y1', tension: 0.1, order: 1 },
-                    { label: 'Off-Peak Demand (kW)', data: keys.map(k => merged[k].peakKwOff || 0), type: 'line', borderColor: '#3b82f6', backgroundColor: '#3b82f6', borderWidth: 2, pointRadius: 4, pointStyle: 'circle', yAxisID: 'y1', tension: 0.1, order: 1 }
+                    { label: 'On-Peak kWh',          data: keys.map(k => yearData[parseInt(k)].onPeakKwh  || 0), backgroundColor: onPeakColors,  stack: '0', yAxisID: 'y',  order: 2 },
+                    { label: 'Off-Peak kWh',         data: keys.map(k => yearData[parseInt(k)].offPeakKwh || 0), backgroundColor: offPeakColors, stack: '0', yAxisID: 'y',  order: 2 },
+                    { label: 'Peak Demand (kW)',      data: keys.map(k => yearData[parseInt(k)].peakKw     || 0), type: 'line', borderColor: '#f59e0b', backgroundColor: '#f59e0b', borderWidth: 2, pointRadius: 4, pointStyle: 'circle', yAxisID: 'y1', tension: 0.1, order: 1 },
+                    { label: 'Off-Peak Demand (kW)', data: keys.map(k => yearData[parseInt(k)].peakKwOff  || 0), type: 'line', borderColor: '#3b82f6', backgroundColor: '#3b82f6', borderWidth: 2, pointRadius: 4, pointStyle: 'circle', yAxisID: 'y1', tension: 0.1, order: 1 }
                 ]
             },
             options: {
@@ -778,7 +807,7 @@
                 plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 8, font: { size: 9 } } } }
             }
         });
-        renderHistoryMonthBtns(isDefaultEstimate ? [] : keys);
+        renderHistoryMonthBtns(keys);
     }
 
     /**
@@ -865,14 +894,7 @@
         renderInlineSummary(cur, resolvedSrc);
         renderSourceSelector();
         renderAnnualChart();
-        // Re-render the history chart only when in default-estimate mode (no real data),
-        // so the displayed bar tracks the selected month and current state values.
-        const historyKeys = getHistoryKeys();
-        if (historyKeys.length === 0) {
-            renderHistoryChart();
-        } else {
-            renderHistoryMonthBtns(historyKeys);
-        }
+        renderHistoryChart();
         if (!document.getElementById('detailsModal').classList.contains('hidden')) renderDetails(resolvedUsage);
     }
 

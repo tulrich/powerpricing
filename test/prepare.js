@@ -15,7 +15,7 @@ try {
         // We will mock these in the test environment, but just in case
         
         // Append exports for testing
-        jsContent += '\nexport { calculate, CONST, SEASON_WEIGHTS };';
+        jsContent += '\nexport { calculate, CONST, SEASON_WEIGHTS, fitSeasonalModel };';
 
         fs.mkdirSync(path.dirname(outputJsPath), { recursive: true });
         fs.writeFileSync(outputJsPath, jsContent);
