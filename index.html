@@ -336,9 +336,15 @@
         if (mIdx === null) return;
         // Load data based on the resolved source preference for this month.
         const source = resolveSource(monthKey);
-        const data = source === 'upload' ? parsedMonthlyData[mIdx] :
-                     source === 'manual' ? monthManualData[mIdx] :
-                     null; // estimated: leave form values as-is
+        let data;
+        if (source === 'upload') {
+            data = parsedMonthlyData[mIdx];
+        } else if (source === 'manual') {
+            data = monthManualData[mIdx];
+        } else {
+            // estimated: pre-populate form with the best-fit seasonal estimate for this month.
+            data = getUsageForYear()[mIdx];
+        }
         if (!data) return;
         Object.assign(state, {
             totalKwh: data.totalKwh,
