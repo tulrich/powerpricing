@@ -555,7 +555,7 @@
                 target.offPeakKwh = target.totalKwh - target.onPeakKwh;
                 updateDOM(['onPeakKwh', 'offPeakKwh']);
             }
-            if (prop === 'billMonth' && parsedMonthlyData && (parsedMonthlyData[parseInt(target.billMonth)] || monthManualData[parseInt(target.billMonth)])) {
+            if (prop === 'billMonth') {
                 loadMonthForFocused(target.billMonth);
             }
             syncToUrl();
