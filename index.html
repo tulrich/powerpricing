@@ -776,6 +776,13 @@
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
+                    onClick: (event, elements, chart) => {
+                        const els = chart.getElementsAtEventForMode(event, 'index', { intersect: false }, true);
+                        if (els.length > 0) {
+                            state.billMonth = els[0].index.toString();
+                            window.switchTab('manual');
+                        }
+                    },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
@@ -851,6 +858,13 @@
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
+                onClick: (event, elements, chart) => {
+                    const els = chart.getElementsAtEventForMode(event, 'index', { intersect: false }, true);
+                    if (els.length > 0) {
+                        state.billMonth = els[0].index.toString();
+                        window.switchTab('manual');
+                    }
+                },
                 scales: {
                     x:  { stacked: true, grid: { display: false } },
                     y:  { stacked: true, position: 'left',  title: { display: true, text: 'kWh', font: { size: 9 } }, min: 0, max: maxKwh * 1.1 },
@@ -1342,6 +1356,7 @@
     window.onload = () => {
         initDropdown();
         loadFromUrl();
+        loadMonthForFocused(state.billMonth);
         renderHistoryChart();
         render();
     };
