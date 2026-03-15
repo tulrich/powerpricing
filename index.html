@@ -756,7 +756,11 @@
             });
 
             const PROVENANCE_COLORS = { upload: '#4285f4', manual: '#a855f7', estimated: '#d1d5db' };
-            const selColors = chartSources.map(s => PROVENANCE_COLORS[s] || '#d1d5db');
+            const selColors = chartSources.map((s, i) => {
+                if (i.toString() === state.billMonth) return '#9333ea'; // Deeper purple for focused month
+                return PROVENANCE_COLORS[s] || '#d1d5db';
+            });
+            const selBorders = chartSources.map((s, i) => i.toString() === state.billMonth ? '#581c87' : 'transparent');
             
             const setTxt = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
             setTxt('yearlyStd', `$${yStd.toLocaleString(undefined, {maximumFractionDigits:0})}`);
@@ -779,7 +783,7 @@
                     labels: chartLabels, 
                     datasets: [
                         { label: 'Standard', data: chartStd, backgroundColor: '#9ca3af', order: 2 },
-                        { label: 'Select', data: chartSel, backgroundColor: selColors, order: 1 }
+                        { label: 'Select', data: chartSel, backgroundColor: selColors, borderColor: selBorders, borderWidth: 2, order: 1 }
                     ] 
                 },
                 options: {
