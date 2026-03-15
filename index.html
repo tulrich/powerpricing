@@ -288,6 +288,8 @@
     // --- Globals ---
     /** @type {Chart|null} */ let chartInstance = null;
     /** @type {Chart|null} */ let historyChartInstance = null;
+    /** When true, suppresses the totalKwh → onPeak/offPeak auto-calculation in the proxy setter. */
+    let isLoadingMonth = false;
     /** @type {Object<string, {totalKwh:number, onPeakKwh:number, offPeakKwh:number, peakKw:number, peakKwOff:number, days:number, label:string}>} */
     let parsedMonthlyData = {};
     /** @type {Map<number, number>} Timestamp (ms) → kWh for each raw interval reading. */
@@ -353,6 +355,7 @@
             data = getUsageForYear()[mIdx];
         }
         if (!data) return;
+        isLoadingMonth = true;
         Object.assign(state, {
             totalKwh: data.totalKwh,
             onPeakKwh: data.onPeakKwh,
@@ -360,6 +363,7 @@
             peakKw: data.peakKw,
             peakKwOff: data.peakKwOff
         });
+        isLoadingMonth = false;
         updateDOM(['totalKwh', 'onPeakKwh', 'offPeakKwh', 'peakKw', 'peakKwOff']);
     }
 
@@ -440,8 +444,10 @@
         // Step 2: fit scale and offset.
         let scale, offset;
         if (realMonths.length === 0) {
-            const refIdx = state.billMonth === 'rolling' ? 11 : parseInt(state.billMonth);
-            scale = state.totalKwh / (SEASON_WEIGHTS[refIdx] || 1);
+            // Use DEFAULT_STATE as a fixed reference so every month gets a distinct
+            // seasonal estimate regardless of which month is currently focused.
+            const refIdx = parseInt(DEFAULT_STATE.billMonth) || 11;
+            scale = DEFAULT_STATE.totalKwh / (SEASON_WEIGHTS[refIdx] || 1);
             offset = 0;
         } else {
             const pts = realMonths.map(d => ({ weight: SEASON_WEIGHTS[d.mIdx], totalKwh: d.totalKwh }));
@@ -550,13 +556,15 @@
             if (prop === 'billMonth') target[prop] = value.toString();
             else target[prop] = parseFloat(value) || 0;
 
-            if (prop === 'totalKwh' && Object.keys(parsedMonthlyData).length === 0) {
+            if (prop === 'totalKwh' && !isLoadingMonth && Object.keys(parsedMonthlyData).length === 0) {
                 target.onPeakKwh = Math.round(target.totalKwh * 0.205);
                 target.offPeakKwh = target.totalKwh - target.onPeakKwh;
                 updateDOM(['onPeakKwh', 'offPeakKwh']);
             }
             if (prop === 'billMonth') {
                 loadMonthForFocused(target.billMonth);
+                const monthSelect = document.getElementById('billMonth');
+                if (monthSelect) monthSelect.value = target.billMonth;
             }
             syncToUrl();
             render();
