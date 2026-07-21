@@ -270,14 +270,22 @@
     const SEASON_WEIGHTS = [0.175, 0.135, 0.082, 0.053, 0.032, 0.043, 0.058, 0.043, 0.039, 0.057, 0.109, 0.174];
     const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     
+    // Rate constants below are calibrated against real Select Pricing Plan bills spanning
+    // Dec 2025 - Jul 2026 (see test/fixtures/validationBills.js). ConEd's supply/delivery
+    // per-kWh rates and the demand System Benefit Charge drift somewhat month to month
+    // (partially true-up/variable charges), so these represent a best-fit "typical current"
+    // snapshot rather than any single bill exactly.
     const CONST = {
-        SC1_STD_FIXED: 20.00, SC1_SEL_FIXED: 30.28, 
-        SBC_RATE: 0.00472, TAX_DELIVERY: 1.0951, TAX_SUPPLY: 1.0702,   
-        STD_DELIVERY_KWH: 0.165, SEL_DELIVERY_KWH: 0.00981, 
-        WINTER_DEMAND: 21.313, SUMMER_DEMAND: 26.50, DEMAND_OFF_PEAK: 7.875,
-        MFC_RATE: 0.003733, 
-        SUPPLY_STD_WINTER: 0.136, SUPPLY_STD_SUMMER: 0.170, 
-        SUPPLY_SEL_ON: 0.20652, SUPPLY_SEL_OFF: 0.08842,
+        SC1_STD_FIXED: 20.00, SC1_SEL_FIXED: 30.28,
+        SBC_RATE: 0.0041, TAX_DELIVERY: 1.0951, TAX_SUPPLY: 1.0702,
+        STD_DELIVERY_KWH: 0.165, SEL_DELIVERY_KWH: 0.0175,
+        WINTER_DEMAND: 21.040, SUMMER_DEMAND: 26.50, DEMAND_OFF_PEAK: 7.170,
+        MFC_RATE: 0.003733,
+        SUPPLY_STD_WINTER: 0.136, SUPPLY_STD_SUMMER: 0.170,
+        SUPPLY_SEL_ON: 0.2114, SUPPLY_SEL_ON_SUMMER: 0.36578, SUPPLY_SEL_OFF: 0.0943,
+        // Per-kW System Benefit Charge on Off-Peak Demand — a real bill line item
+        // (appears starting the Feb 2026 bill) that earlier versions of this model omitted.
+        SBC_DEMAND_RATE: 0.8594,
     };
 
     const DEFAULT_STATE = {
@@ -576,10 +584,11 @@
     // --- Calculations & Rendering ---
     function calculate(usage, monthKey, credits = { onPeak: 0, offPeak: 0, general: 0 }) {
         let monthIdx = (monthKey === 'rolling') ? 0 : parseInt(monthKey);
-        const isSummer = monthIdx >= 5 && monthIdx <= 8; 
+        const isSummer = monthIdx >= 5 && monthIdx <= 8;
         const demandRate = isSummer ? CONST.SUMMER_DEMAND : CONST.WINTER_DEMAND;
         const stdSupplyRate = isSummer ? CONST.SUPPLY_STD_SUMMER : CONST.SUPPLY_STD_WINTER;
-        
+        const selSupplyOnRate = isSummer ? CONST.SUPPLY_SEL_ON_SUMMER : CONST.SUPPLY_SEL_ON;
+
         // Net metering for Select Plan: track on-peak and off-peak separately (different rates)
         const netOnPeak = usage.onPeakKwh - credits.onPeak;
         const netOffPeak = usage.offPeakKwh - credits.offPeak;
@@ -613,10 +622,11 @@
         const selFixed = CONST.SC1_SEL_FIXED;
         const demandPeakCost = usage.peakKw * demandRate;
         const demandOffCost = usage.peakKwOff * CONST.DEMAND_OFF_PEAK;
+        const sbcDemandCost = usage.peakKwOff * CONST.SBC_DEMAND_RATE;
         const selDelVol = billedTotalSel * (CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE);
-        const selDelTotal = (selFixed + demandPeakCost + demandOffCost + selDelVol) * CONST.TAX_DELIVERY;
+        const selDelTotal = (selFixed + demandPeakCost + demandOffCost + sbcDemandCost + selDelVol) * CONST.TAX_DELIVERY;
 
-        const selSupOn = billedOnPeak * CONST.SUPPLY_SEL_ON;
+        const selSupOn = billedOnPeak * selSupplyOnRate;
         const selSupOff = billedOffPeak * CONST.SUPPLY_SEL_OFF;
         const selMFC = billedTotalSel * CONST.MFC_RATE;
         const selSupTotal = (selSupOn + selSupOff + selMFC) * CONST.TAX_SUPPLY;
@@ -627,7 +637,7 @@
             credits: newCredits,
             billedKwh: { onPeak: billedOnPeak, offPeak: billedOffPeak, totalSel: billedTotalSel, totalStd: billedTotalStd },
             details: {
-                selFixed, demandPeakCost, demandOffCost, selDelVol, 
+                selFixed, demandPeakCost, demandOffCost, sbcDemandCost, selDelVol,
                 selDelTotal, selSupOn, selSupOff, selMFC, selSupTotal,
                 stdFixed, stdDelVol, stdSupVol, stdMFC, stdDelTotal, stdSupTotal
             }
@@ -649,7 +659,7 @@
         const stdTax = (cur.stdDel - det.stdFixed - det.stdDelVol) + (cur.stdSup - det.stdSupVol - det.stdMFC);
 
         // Calculate Select Plan Tax/Fees
-        const selTax = (cur.selDel - det.selFixed - det.demandPeakCost - det.demandOffCost - det.selDelVol) +
+        const selTax = (cur.selDel - det.selFixed - det.demandPeakCost - det.demandOffCost - det.sbcDemandCost - det.selDelVol) +
             (cur.selSup - det.selSupOn - det.selSupOff - det.selMFC);
 
         /**
@@ -687,11 +697,16 @@
                             <span class="text-[10px] text-gray-400 mt-0.5">${parseFloat(resolvedUsage.peakKwOff).toFixed(2)} kW @ $${CONST.DEMAND_OFF_PEAK.toFixed(3)}</span>
                             <span class="font-mono font-bold text-blue-700">${fmt(det.demandOffCost)}</span>
                         </div>
+                        <div class="flex justify-between">
+                            <span>System Benefit Charge (Demand)</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">${parseFloat(resolvedUsage.peakKwOff).toFixed(2)} kW @ $${CONST.SBC_DEMAND_RATE.toFixed(3)}</span>
+                            <span class="font-mono font-bold text-blue-700">${fmt(det.sbcDemandCost)}</span>
+                        </div>
                     </div>
 
                     <div class="space-y-1">
                         ${detailRow('Delivery (Volumetric)', det.selDelVol, `${Math.round(cur.billedKwh.totalSel)} kWh @ $${(CONST.SEL_DELIVERY_KWH + CONST.SBC_RATE).toFixed(5)}`)}
-                        ${detailRow('Supply (On-Peak)', det.selSupOn, `${Math.round(cur.billedKwh.onPeak)} kWh @ $${CONST.SUPPLY_SEL_ON.toFixed(5)}`)}
+                        ${detailRow('Supply (On-Peak)', det.selSupOn, `${Math.round(cur.billedKwh.onPeak)} kWh @ $${(isSum ? CONST.SUPPLY_SEL_ON_SUMMER : CONST.SUPPLY_SEL_ON).toFixed(5)}`)}
                         ${detailRow('Supply (Off-Peak)', det.selSupOff, `${Math.round(cur.billedKwh.offPeak)} kWh @ $${CONST.SUPPLY_SEL_OFF.toFixed(5)}`)}
                         ${detailRow('Merchant Function Charge', det.selMFC)}
                         <div class="flex justify-between text-gray-400 italic"><span>Taxes & Surcharges</span><span class="font-mono">${fmt(selTax)}</span></div>
@@ -1076,28 +1091,33 @@
         }
     }
 
-    function processGlobalIntervals() {
-        if(globalIntervals.size === 0) return;
-
-        const intervals = Array.from(globalIntervals.entries())
+    /**
+     * Pure computation: groups raw 15-minute interval readings by calendar month and
+     * derives each month's total/on-peak/off-peak kWh plus billed demand (kW), using the
+     * same top-3-highest-hourly-average method ConEd uses for Select Plan demand charges.
+     * Months with fewer than 2 distinct days of data are dropped (too little signal).
+     * @param {Map<number, number>} intervalsMap - Timestamp (ms) → kWh readings.
+     * @returns {Object<number, {totalKwh:number, onPeakKwh:number, offPeakKwh:number, peakKw:number, peakKwOff:number, label:string, days:number}>}
+     */
+    function computeMonthlyUsage(intervalsMap) {
+        const intervals = Array.from(intervalsMap.entries())
             .map(([ts, kwh]) => ({ ts, kwh }))
             .sort((a,b) => a.ts - b.ts);
 
         const months = {};
-        
+
         intervals.forEach(i => {
             const date = new Date(i.ts);
-            const mKey = date.getMonth(); 
+            const mKey = date.getMonth();
             if (!months[mKey]) months[mKey] = { raw: [], total: 0, onPeak: 0, offPeak: 0, days: new Set() };
-            
+
             months[mKey].raw.push(i);
             months[mKey].days.add(date.toDateString());
-            months[mKey].total += i.kwh; 
-            
+            months[mKey].total += i.kwh;
+
             const hour = date.getHours();
             const day = date.getDay();
             const isWeekday = (day >= 1 && day <= 5);
-            const isSummer = (mKey >= 5 && mKey <= 8);
 
 	    // TODO: also test for holidays. Holidays are off peak.
             const onPeak = isWeekday && hour >= 8 && hour < 22;
@@ -1111,6 +1131,7 @@
             return peaks.reduce((a,b) => a+b, 0) / peaks.length;
         };
 
+        const result = {};
         Object.keys(months).forEach(mIdx => {
             if(months[mIdx].days.size < 2) return;
 
@@ -1135,7 +1156,7 @@
 		}
                 const window = readings.slice(i, nextI);
 
-                const avgKw = window.reduce((a, b) => a + b.kwh, 0); 
+                const avgKw = window.reduce((a, b) => a + b.kwh, 0);
                 const midTime = new Date(window[Math.floor((window.length - 1) / 2)].ts);
                 const hour = midTime.getHours();
                 const day = midTime.getDay();
@@ -1145,7 +1166,7 @@
                 if (!target[dayStr] || avgKw > target[dayStr]) target[dayStr] = avgKw;
             }
 
-            parsedMonthlyData[mIdx] = {
+            result[mIdx] = {
                 totalKwh: Math.round(m.total),
                 onPeakKwh: Math.round(m.onPeak),
                 offPeakKwh: Math.round(m.offPeak),
@@ -1154,6 +1175,16 @@
                 label: MONTH_NAMES[mIdx],
                 days: m.days.size
             };
+        });
+        return result;
+    }
+
+    function processGlobalIntervals() {
+        if(globalIntervals.size === 0) return;
+
+        const computed = computeMonthlyUsage(globalIntervals);
+        Object.keys(computed).forEach(mIdx => {
+            parsedMonthlyData[mIdx] = computed[mIdx];
             // Record the timestamp when this month's upload was processed.
             uploadUpdatedAt[mIdx] = Date.now();
         });
@@ -1215,11 +1246,18 @@
         }
     }
 
-    function parseIntervalCSV(csv) {
+    /**
+     * Pure parse of a Green Button interval-usage CSV (either the "USAGE (kWh)" single-column
+     * form or the newer "IMPORT (kWh)/EXPORT (kWh)" net-metering form) into [timestamp, kwh] pairs.
+     * @param {string} csv
+     * @returns {Array<[number, number]>}
+     */
+    function parseIntervalCSVEntries(csv) {
+        const entries = [];
         const lines = csv.split('\n');
         let headerIdx = -1;
         let hParts = [];
-        
+
         for (let i = 0; i < Math.min(lines.length, 20); i++) {
             const line = lines[i];
             // Header Hunt
@@ -1229,33 +1267,38 @@
                 break;
             }
         }
-        
-        if (headerIdx === -1) return;
+
+        if (headerIdx === -1) return entries;
 
         const dateIdx = hParts.findIndex(h => h.includes("DATE") && !h.includes("END"));
         const timeIdx = hParts.findIndex(h => h.includes("START TIME"));
         let usageIdx = hParts.findIndex(h => h === "USAGE" || h.includes("USAGE (kWh)"));
         const importIdx = hParts.findIndex(h => h.includes("IMPORT"));
         const exportIdx = hParts.findIndex(h => h.includes("EXPORT"));
-        
+
         for (let i = headerIdx + 1; i < lines.length; i++) {
             const line = lines[i];
             if (!line.trim()) continue;
-            const p = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/); 
+            const p = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
             if (p.length < 4) continue;
-            
+
             const clean = (s) => parseFloat(s ? s.replace(/[",]/g, '') : 0);
             let kwh = 0;
 
             if (usageIdx !== -1) kwh = clean(p[usageIdx]);
             else if (importIdx !== -1 && exportIdx !== -1) kwh = clean(p[importIdx]) - clean(p[exportIdx]);
-            else if (p.length >= 5) kwh = clean(p[4]); 
+            else if (p.length >= 5) kwh = clean(p[4]);
 
             if (!isNaN(kwh) && p[dateIdx] && p[timeIdx]) {
                 const ts = new Date(`${p[dateIdx]}T${p[timeIdx]}`).getTime();
-                if(!isNaN(ts)) globalIntervals.set(ts, kwh);
+                if(!isNaN(ts)) entries.push([ts, kwh]);
             }
         }
+        return entries;
+    }
+
+    function parseIntervalCSV(csv) {
+        parseIntervalCSVEntries(csv).forEach(([ts, kwh]) => globalIntervals.set(ts, kwh));
     }
 
     function parseIntervalXML(xml) {
