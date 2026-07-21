@@ -462,12 +462,22 @@
             ({ scale, offset } = fitSeasonalModel(pts));
         }
 
-        // Step 3: average on-peak fraction and demand ratios from real months.
+        // Step 3: fit on-peak kWh, peak kW, and off-peak kW the same season-weighted way as
+        // totalKwh (rather than averaging each month's raw per-kWh ratio). Averaging ratios
+        // directly is unstable here: a low-usage month (e.g. a summer month with solar export)
+        // can have a tiny or negative totalKwh alongside ordinary baseline peak demand, giving
+        // it a wildly inflated peakKw/totalKwh ratio that then blows up once multiplied by a
+        // high-usage winter month's much larger estimated totalKwh.
         const validReal = realMonths.filter(d => d.totalKwh > 0);
         const avgRatio = (key) => validReal.length > 0 ? validReal.reduce((s, d) => s + d[key] / d.totalKwh, 0) / validReal.length : null;
-        const avgOnPeakFrac     = avgRatio('onPeakKwh') ?? 0.205;
-        const avgPeakKwRatio    = avgRatio('peakKw')    ?? 1 / 540;
-        const avgPeakKwOffRatio = avgRatio('peakKwOff') ?? 1 / 540;
+        const fallbackOnPeakFrac     = avgRatio('onPeakKwh') ?? 0.205;
+        const fallbackPeakKwRatio    = avgRatio('peakKw')    ?? 1 / 540;
+        const fallbackPeakKwOffRatio = avgRatio('peakKwOff') ?? 1 / 540;
+
+        const fitKey = (key) => fitSeasonalModel(realMonths.map(d => ({ weight: SEASON_WEIGHTS[d.mIdx], totalKwh: d[key] })));
+        const onPeakFit    = realMonths.length > 0 ? fitKey('onPeakKwh') : null;
+        const peakKwFit    = realMonths.length > 0 ? fitKey('peakKw')    : null;
+        const peakKwOffFit = realMonths.length > 0 ? fitKey('peakKwOff') : null;
 
         // Step 4: build the 12-month array.
         return Array.from({ length: 12 }, (_, i) => {
@@ -475,12 +485,17 @@
             if (src === 'upload' && parsedMonthlyData[i]) return { ...parsedMonthlyData[i], source: 'upload' };
             if (src === 'manual' && monthManualData[i])  return { ...monthManualData[i],  source: 'manual' };
             const totalKwh = Math.max(0, scale * SEASON_WEIGHTS[i] + offset);
+            const w = SEASON_WEIGHTS[i];
+            // Peak demand (kW) can't be negative; on-peak kWh legitimately can be (net solar export).
+            const onPeakKwh = onPeakFit ? Math.min(totalKwh, onPeakFit.scale * w + onPeakFit.offset) : totalKwh * fallbackOnPeakFrac;
+            const peakKw    = Math.max(0, peakKwFit    ? peakKwFit.scale    * w + peakKwFit.offset    : totalKwh * fallbackPeakKwRatio);
+            const peakKwOff = Math.max(0, peakKwOffFit ? peakKwOffFit.scale * w + peakKwOffFit.offset : totalKwh * fallbackPeakKwOffRatio);
             return {
                 totalKwh,
-                onPeakKwh:  totalKwh * avgOnPeakFrac,
-                offPeakKwh: totalKwh * (1 - avgOnPeakFrac),
-                peakKw:     totalKwh * avgPeakKwRatio,
-                peakKwOff:  totalKwh * avgPeakKwOffRatio,
+                onPeakKwh,
+                offPeakKwh: totalKwh - onPeakKwh,
+                peakKw,
+                peakKwOff,
                 days: 0,
                 source: 'estimated'
             };

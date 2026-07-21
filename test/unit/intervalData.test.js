@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { describe, it, expect } from 'vitest';
 
-import { calculate, parseIntervalCSVEntries, computeMonthlyUsage, MONTH_NAMES } from './app_logic.js';
+import { calculate, parseIntervalCSVEntries, computeMonthlyUsage, MONTH_NAMES, getUsageForYear, parsedMonthlyData } from './app_logic.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -72,6 +72,28 @@ describe('Real Interval Data (test/fixtures/interval_data_2026-01-01_to_2026-07-
             expect(Number.isFinite(result.stdTotal)).toBe(true);
             expect(result.selTotal).toBeGreaterThanOrEqual(0);
             expect(result.stdTotal).toBeGreaterThanOrEqual(0);
+        });
+    });
+
+    it('should extrapolate sane (not blown-up) peak demand for unobserved winter months', () => {
+        // Regression test: uploading just this Jan-Jul file (no Aug-Dec data) used to make
+        // getUsageForYear() estimate wild Nov/Dec peak demand. The bug was averaging each
+        // real month's raw peakKw/totalKwh ratio equally: summer months here have tiny (or
+        // solar-negative) totalKwh alongside ordinary baseline peak demand, so their ratio
+        // is huge, and multiplying that inflated average ratio by a big winter totalKwh
+        // estimate blew up the result (~50+ kW, vs. a real max of ~16 kW in this dataset).
+        Object.keys(monthly).forEach(mIdx => { parsedMonthlyData[mIdx] = monthly[mIdx]; });
+
+        const year = getUsageForYear();
+        const maxRealPeakKw = Math.max(...Object.values(monthly).map(m => m.peakKw));
+        const maxRealPeakKwOff = Math.max(...Object.values(monthly).map(m => m.peakKwOff));
+
+        [10, 11].forEach(mIdx => { // Nov, Dec: unobserved, highest seasonal weight
+            expect(year[mIdx].source).toBe('estimated');
+            // Generous headroom above the real observed max, but nowhere near the ~50+ kW
+            // the ratio-averaging bug used to produce.
+            expect(year[mIdx].peakKw).toBeLessThan(maxRealPeakKw * 2);
+            expect(year[mIdx].peakKwOff).toBeLessThan(maxRealPeakKwOff * 2);
         });
     });
 });
