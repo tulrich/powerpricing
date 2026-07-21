@@ -217,8 +217,6 @@
     <footer class="py-8 text-center space-y-4">
         <div class="flex justify-center gap-4 text-[10px] text-gray-300">
             <button id="resetBtn" class="hover:text-gray-500 underline">Reset Defaults</button>
-            <span>|</span>
-            <button id="testBtn" class="hover:text-gray-500 underline">Run Validation Tests</button>
         </div>
         <div class="flex flex-col items-center gap-2 border-t border-gray-100 pt-6">
             <a href="https://github.com/tulrich/powerpricing" target="_blank" class="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-800">
@@ -887,6 +885,14 @@
         const maxKwh = Math.max(dataMaxKwh, dataMaxKw * 540, 1);
         const maxKw  = maxKwh / 540;
 
+        // Compact "x1000" tick formatting for the kWh axis: trims a topmost label like
+        // "30,648.6" down to "31", freeing up horizontal space for the plot area itself.
+        // Rounds to whole kWh(x1000) units — Chart.js's ticks.precision option doesn't
+        // reliably round the boundary tick when an explicit axis `max` is set, so both
+        // axes use an explicit integer-rounding callback instead.
+        const formatKwhTick = (value) => Math.round(value / 1000).toString();
+        const formatKwTick = (value) => Math.round(value).toString();
+
         historyChartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -900,6 +906,7 @@
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
+                layout: { padding: { left: 2, right: 2 } },
                 onClick: (event, elements, chart) => {
                     const els = chart.getElementsAtEventForMode(event, 'index', { intersect: false }, true);
                     if (els.length > 0) {
@@ -909,25 +916,67 @@
                 },
                 scales: {
                     x:  { stacked: true, grid: { display: false } },
-                    y:  { stacked: true, position: 'left',  title: { display: true, text: 'kWh', font: { size: 9 } }, min: 0, max: maxKwh * 1.1 },
-                    y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'kW', font: { size: 9 } }, min: 0, max: maxKw * 1.1 }
+                    y:  {
+                        stacked: true, position: 'left', min: 0, max: maxKwh * 1.1,
+                        title: { display: true, text: 'kWh (×1000)', font: { size: 9 } },
+                        ticks: { callback: formatKwhTick, padding: 2 }
+                    },
+                    y1: {
+                        position: 'right', grid: { drawOnChartArea: false }, min: 0, max: maxKw * 1.1,
+                        title: { display: true, text: 'kW', font: { size: 9 } },
+                        ticks: { callback: formatKwTick, padding: 2 }
+                    }
                 },
-                plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 8, font: { size: 9 } } } }
+                plugins: {
+                    legend: {
+                        display: true, position: 'top',
+                        labels: {
+                            boxWidth: 8, font: { size: 9 }, usePointStyle: true,
+                            // Force bar (kWh) legend swatches to stay square and line (kW demand)
+                            // swatches to be circles, matching the circular point markers used
+                            // on the demand lines in the chart itself — usePointStyle alone would
+                            // render every swatch as a circle since Rectangle elements have no
+                            // pointStyle of their own.
+                            generateLabels: (chart) => chart.data.datasets.map((ds, i) => {
+                                const isLine = ds.type === 'line';
+                                const color = Array.isArray(ds.backgroundColor) ? ds.backgroundColor[0] : ds.backgroundColor;
+                                return {
+                                    text: ds.label,
+                                    datasetIndex: i,
+                                    hidden: !chart.isDatasetVisible(i),
+                                    fillStyle: color,
+                                    strokeStyle: isLine ? ds.borderColor : color,
+                                    lineWidth: isLine ? 2 : 0,
+                                    pointStyle: isLine ? 'circle' : 'rect',
+                                };
+                            })
+                        }
+                    }
+                }
             }
         });
-        renderHistoryMonthBtns(keys);
+        renderHistoryMonthBtns(keys, historyChartInstance);
     }
 
     /**
      * Renders small per-month source-preference toggle buttons beneath the Data Profile chart.
      * @param {string[]} keys - sorted month index strings to show buttons for
+     * @param {Chart} [chart] - the rendered history chart, used to align each button under its
+     *   corresponding bar group (the plot area is inset from the card edges by the y-axis labels).
      */
-    function renderHistoryMonthBtns(keys) {
+    function renderHistoryMonthBtns(keys, chart) {
         const container = document.getElementById('historyMonthBtns');
         if (!container) return;
         container.innerHTML = '';
         if (!keys || keys.length === 0) { container.classList.add('hidden'); return; }
         container.classList.remove('hidden');
+        if (chart && chart.chartArea) {
+            container.style.paddingLeft = `${chart.chartArea.left}px`;
+            container.style.paddingRight = `${chart.width - chart.chartArea.right}px`;
+        } else {
+            container.style.paddingLeft = '';
+            container.style.paddingRight = '';
+        }
         keys.forEach(k => {
             const mIdx = parseInt(k);
             const pref      = monthSourcePref[mIdx] || 'auto';
