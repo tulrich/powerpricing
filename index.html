@@ -53,8 +53,9 @@
                     <input type="file" id="fileInput" class="hidden" accept=".csv,.xml,.zip" multiple>
                     <div class="space-y-2 pointer-events-none">
                         <div class="text-2xl">⚡️</div>
-                        <p class="text-xs font-bold text-gray-500 uppercase">Upload ConEd Data</p>
+                        <p class="text-xs font-bold text-gray-500 uppercase">Upload ConEd or Emporia Data</p>
                         <p id="dropStatus" class="text-[10px] text-gray-400">Drop "Export usage" files here to accumulate history</p>
+                        <p id="uploadSummary" class="text-[10px] text-gray-500 hidden"></p>
                     </div>
                     <button onclick="window.toggleHelp(event)" class="absolute top-2 right-2 text-gray-400 hover:text-blue-500 z-10 p-2">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -256,6 +257,7 @@
             <li>Select "Export usage" (for detailed interval data) or "Bill Totals".</li>
             <li>Choose either <strong>CSV</strong> or <strong>XML</strong> format.</li>
 	    <li>Choose a long time interval if you can - up to 1 year. You can also upload multiple files into this app and the data will get merged together.</li>
+            <li>Emporia Vue CSV exports are also supported, including per-circuit hourly traces.</li>
         </ol>
         <div class="text-center">
             <button onclick="window.toggleHelp(event)" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold py-2 px-4 rounded-lg">Got it</button>
@@ -306,6 +308,18 @@
     let monthSourcePref = {};
     /** @type {Object<number, number>} Per-month upload-processed timestamp (ms). */
     let uploadUpdatedAt = {};
+    /** @type {Object<string, Map<number, number>>} Emporia per-circuit timestamp (ms) → kWh traces. */
+    let emporiaCircuitIntervals = {};
+    /** @type {Object<string, {kind:string, samples:number}>} Emporia per-circuit metadata. */
+    let emporiaCircuitMeta = {};
+    /** Tracks upload sources and time coverage for UI summary. */
+    let uploadSummaryState = {
+        greenButtonFiles: 0,
+        emporiaFiles: 0,
+        emporiaCircuits: new Set(),
+        minTs: null,
+        maxTs: null
+    };
 
     // --- Core Functions (Defined BEFORE use) ---
     function updateDOM(keys) {
@@ -1243,6 +1257,292 @@
         return result;
     }
 
+    /**
+     * Returns top demand-driving hours by month for future advanced analysis.
+     * @param {Map<number, number>} intervalsMap
+     * @returns {Object<number, {on:Array<{ts:number, kwh:number}>, off:Array<{ts:number, kwh:number}>}>}
+     */
+    function computeMonthlyPeakWindows(intervalsMap = globalIntervals) {
+        const buckets = {};
+        intervalsMap.forEach((kwh, ts) => {
+            const hourKey = Math.floor(ts / 3600000);
+            if (!buckets[hourKey]) buckets[hourKey] = { ts: hourKey * 3600000, kwh: 0 };
+            buckets[hourKey].kwh += kwh;
+        });
+        const monthly = {};
+        Object.values(buckets).forEach((bucket) => {
+            const date = new Date(bucket.ts);
+            const mIdx = date.getMonth();
+            if (!monthly[mIdx]) monthly[mIdx] = { on: [], off: [] };
+            const day = date.getDay();
+            const hour = date.getHours();
+            const isPeak = day >= 1 && day <= 5 && hour >= 8 && hour < 22;
+            monthly[mIdx][isPeak ? 'on' : 'off'].push(bucket);
+        });
+        Object.keys(monthly).forEach((mIdx) => {
+            monthly[mIdx].on = monthly[mIdx].on.sort((a, b) => b.kwh - a.kwh).slice(0, 3);
+            monthly[mIdx].off = monthly[mIdx].off.sort((a, b) => b.kwh - a.kwh).slice(0, 3);
+        });
+        return monthly;
+    }
+
+    /**
+     * Estimates per-circuit contribution during top monthly demand hours.
+     * @param {number} monthIdx
+     * @param {'on'|'off'} peakType
+     * @returns {Object<string, number>}
+     */
+    function estimateCircuitContributionForPeakWindows(monthIdx, peakType = 'on') {
+        const peaks = computeMonthlyPeakWindows(globalIntervals)?.[monthIdx]?.[peakType] || [];
+        if (peaks.length === 0) return {};
+        const hourKeys = peaks.map((p) => Math.floor(p.ts / 3600000));
+        const contributions = {};
+        Object.entries(emporiaCircuitIntervals).forEach(([name, series]) => {
+            let total = 0;
+            hourKeys.forEach((hourKey) => {
+                const ts = hourKey * 3600000;
+                if (series.has(ts)) {
+                    total += series.get(ts);
+                    return;
+                }
+                let hourSum = 0;
+                series.forEach((value, sampleTs) => {
+                    if (Math.floor(sampleTs / 3600000) === hourKey) hourSum += value;
+                });
+                total += hourSum;
+            });
+            if (total !== 0) contributions[name] = total;
+        });
+        return contributions;
+    }
+
+    function updateUploadCoverage(ts) {
+        if (!Number.isFinite(ts)) return;
+        if (uploadSummaryState.minTs === null || ts < uploadSummaryState.minTs) uploadSummaryState.minTs = ts;
+        if (uploadSummaryState.maxTs === null || ts > uploadSummaryState.maxTs) uploadSummaryState.maxTs = ts;
+    }
+
+    function applyAggregateEntries(entries) {
+        entries.forEach(([ts, kwh]) => {
+            globalIntervals.set(ts, kwh);
+            updateUploadCoverage(ts);
+        });
+    }
+
+    function classifyEmporiaColumn(header) {
+        const h = header.toLowerCase();
+        if (/\bnet\b/.test(h)) return 'net';
+        if (/(grid.*import|import|from grid)/.test(h)) return 'import';
+        if (/(grid.*export|export|to grid)/.test(h)) return 'export';
+        if (/(solar|pv|generation)/.test(h)) return 'generation';
+        if (/battery/.test(h)) return 'battery';
+        return 'load';
+    }
+
+    function normalizeNumeric(raw, isWhColumn) {
+        const value = parseFloat((raw || '').replace(/[",]/g, ''));
+        if (!Number.isFinite(value)) return null;
+        return isWhColumn ? value / 1000 : value;
+    }
+
+    function detectUploadFormat(content, fileName = '') {
+        const trimmed = content.trim();
+        if (!trimmed) return 'unknown';
+        if (fileName.endsWith('.xml') || trimmed.startsWith('<?xml')) return 'green_button_xml';
+
+        const lines = trimmed.split('\n').slice(0, 250);
+        let sawEmporiaCandidate = false;
+        for (const line of lines) {
+            if (!line.includes(',')) continue;
+            const header = line
+                .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+                .map((h) => h.trim().replace(/"/g, '').toLowerCase());
+            if (header.length < 3) continue;
+            const hasGreenButtonHeader = header.some((h) => h.includes('start time')) ||
+                (header.some((h) => h.includes('type')) && header.some((h) => h.includes('date')));
+            if (hasGreenButtonHeader) return 'green_button_csv';
+
+            const hasTime = header.some((h) => /(timestamp|date\/time|datetime|date time)/.test(h)) ||
+                (header.some((h) => /\bdate\b/.test(h)) && header.some((h) => /\btime\b/.test(h)));
+            if (hasTime) sawEmporiaCandidate = true;
+        }
+        if (sawEmporiaCandidate) return 'emporia_csv';
+        return 'unknown';
+    }
+
+    /**
+     * Parses Emporia-style hourly CSV and returns aggregate net entries plus per-circuit traces.
+     * @param {string} csv
+     * @returns {{aggregateEntries:Array<[number, number]>, circuitSeries:Object<string, Map<number, number>>, circuitMeta:Object<string, {kind:string, samples:number}>}|null}
+     */
+    function parseEmporiaCSVEntries(csv) {
+        const lines = csv.split('\n');
+        const headerIdx = lines.findIndex((line) => {
+            if (!line.includes(',')) return false;
+            const header = line
+                .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+                .map((s) => s.trim().replace(/"/g, '').toLowerCase());
+            const hasTimestamp = header.some((h) => /(timestamp|date\/time|datetime|date time)/.test(h));
+            const hasDateTime = header.some((h) => /\bdate\b/.test(h)) && header.some((h) => /\btime\b/.test(h));
+            return hasTimestamp || hasDateTime;
+        });
+        if (headerIdx === -1) return null;
+
+        const headers = lines[headerIdx]
+            .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+            .map((s) => s.trim().replace(/"/g, ''));
+        const normalizedHeaders = headers.map((h) => h.toLowerCase());
+        const timestampIdx = normalizedHeaders.findIndex((h) => /(timestamp|date\/time|datetime|date time)/.test(h));
+        const dateIdx = normalizedHeaders.findIndex((h) => /\bdate\b/.test(h) && !/\bupdate\b/.test(h));
+        const timeIdx = normalizedHeaders.findIndex((h) => /\btime\b/.test(h) && !/\btimezone\b/.test(h) && !/\btimestamp\b/.test(h));
+        if (timestampIdx === -1 && (dateIdx === -1 || timeIdx === -1)) return null;
+
+        const nonDataCols = new Set([timestampIdx, dateIdx, timeIdx].filter((idx) => idx >= 0));
+        const valueColumns = [];
+        headers.forEach((header, idx) => {
+            if (nonDataCols.has(idx)) return;
+            if (!header.trim()) return;
+            valueColumns.push({
+                idx,
+                name: header.trim(),
+                kind: classifyEmporiaColumn(header),
+                isWhColumn: /\(\s*wh\s*\)/i.test(header)
+            });
+        });
+        if (valueColumns.length === 0) return null;
+
+        const aggregateByTs = new Map();
+        const circuitSeries = {};
+        const circuitMeta = {};
+        valueColumns.forEach((column) => {
+            circuitSeries[column.name] = new Map();
+            circuitMeta[column.name] = { kind: column.kind, samples: 0 };
+        });
+
+        for (let i = headerIdx + 1; i < lines.length; i++) {
+            const line = lines[i];
+            if (!line.trim()) continue;
+            const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+            if (parts.length < headers.length) continue;
+
+            const dateTimeValue = timestampIdx !== -1
+                ? parts[timestampIdx]
+                : `${parts[dateIdx]} ${parts[timeIdx]}`;
+            const ts = new Date((dateTimeValue || '').replace(/"/g, '').trim()).getTime();
+            if (!Number.isFinite(ts)) continue;
+
+            let netCandidate = null;
+            let importValue = 0;
+            let exportValue = 0;
+            let hasImportExport = false;
+            let fallbackSignedSum = 0;
+
+            valueColumns.forEach((column) => {
+                const value = normalizeNumeric(parts[column.idx], column.isWhColumn);
+                if (value === null) return;
+                circuitSeries[column.name].set(ts, value);
+                circuitMeta[column.name].samples += 1;
+
+                if (column.kind === 'net') {
+                    netCandidate = value;
+                    return;
+                }
+                if (column.kind === 'import') {
+                    importValue += value;
+                    hasImportExport = true;
+                    return;
+                }
+                if (column.kind === 'export') {
+                    exportValue += value;
+                    hasImportExport = true;
+                    return;
+                }
+                if (column.kind === 'generation') {
+                    fallbackSignedSum -= Math.abs(value);
+                    return;
+                }
+                fallbackSignedSum += value;
+            });
+
+            let aggregateKwh = fallbackSignedSum;
+            if (netCandidate !== null) aggregateKwh = netCandidate;
+            else if (hasImportExport) aggregateKwh = importValue - exportValue;
+            aggregateByTs.set(ts, aggregateKwh);
+        }
+
+        const aggregateEntries = Array.from(aggregateByTs.entries()).sort((a, b) => a[0] - b[0]);
+        return { aggregateEntries, circuitSeries, circuitMeta };
+    }
+
+    function mergeEmporiaSeries(circuitSeries, circuitMeta) {
+        Object.entries(circuitSeries).forEach(([name, series]) => {
+            if (!emporiaCircuitIntervals[name]) emporiaCircuitIntervals[name] = new Map();
+            series.forEach((value, ts) => {
+                emporiaCircuitIntervals[name].set(ts, value);
+                updateUploadCoverage(ts);
+            });
+            uploadSummaryState.emporiaCircuits.add(name);
+        });
+        Object.entries(circuitMeta).forEach(([name, meta]) => {
+            const prev = emporiaCircuitMeta[name];
+            emporiaCircuitMeta[name] = {
+                kind: meta.kind,
+                samples: (prev?.samples || 0) + meta.samples
+            };
+        });
+    }
+
+    function ingestFileContent(fileName, content) {
+        const format = detectUploadFormat(content, fileName.toLowerCase());
+        if (format === 'green_button_xml') {
+            const entries = parseIntervalXMLEntries(content);
+            applyAggregateEntries(entries);
+            uploadSummaryState.greenButtonFiles += 1;
+            return;
+        }
+        if (format === 'green_button_csv') {
+            const entries = parseIntervalCSVEntries(content);
+            applyAggregateEntries(entries);
+            uploadSummaryState.greenButtonFiles += 1;
+            return;
+        }
+        if (format === 'emporia_csv') {
+            const parsed = parseEmporiaCSVEntries(content);
+            if (!parsed || parsed.aggregateEntries.length === 0) throw new Error(`No usable Emporia interval rows in ${fileName}`);
+            applyAggregateEntries(parsed.aggregateEntries);
+            mergeEmporiaSeries(parsed.circuitSeries, parsed.circuitMeta);
+            uploadSummaryState.emporiaFiles += 1;
+            return;
+        }
+        throw new Error(`Unsupported upload format for ${fileName}`);
+    }
+
+    function formatUploadDate(ts) {
+        if (!Number.isFinite(ts)) return '--';
+        return new Date(ts).toISOString().slice(0, 10);
+    }
+
+    function renderUploadSummary() {
+        const el = document.getElementById('uploadSummary');
+        if (!el) return;
+        const totalSources = uploadSummaryState.greenButtonFiles + uploadSummaryState.emporiaFiles;
+        if (totalSources === 0) {
+            el.classList.add('hidden');
+            el.textContent = '';
+            return;
+        }
+        const pieces = [];
+        if (uploadSummaryState.greenButtonFiles > 0) pieces.push(`${uploadSummaryState.greenButtonFiles} Green Button`);
+        if (uploadSummaryState.emporiaFiles > 0) pieces.push(`${uploadSummaryState.emporiaFiles} Emporia`);
+        const circuitNames = Array.from(uploadSummaryState.emporiaCircuits).sort();
+        const circuitLabel = circuitNames.length > 0
+            ? ` · circuits: ${circuitNames.length} (${circuitNames.slice(0, 3).join(', ')}${circuitNames.length > 3 ? ', …' : ''})`
+            : '';
+        const rangeLabel = ` · range: ${formatUploadDate(uploadSummaryState.minTs)} to ${formatUploadDate(uploadSummaryState.maxTs)}`;
+        el.textContent = `Sources: ${pieces.join(' + ')}${circuitLabel}${rangeLabel}`;
+        el.classList.remove('hidden');
+    }
+
     function processGlobalIntervals() {
         if(globalIntervals.size === 0) return;
 
@@ -1268,6 +1568,7 @@
         const ds = document.getElementById('dropStatus');
         ds.textContent = `✅ Merged ${count} months. Total intervals: ${globalIntervals.size}`;
         ds.className = "text-[10px] text-green-600 font-bold";
+        renderUploadSummary();
         render(); 
     }
 
@@ -1277,28 +1578,19 @@
         status.className = "text-[10px] text-blue-500 font-bold";
 
         try {
-            let text = "";
-            let isXml = file.name.endsWith('.xml');
-
             if (file.name.endsWith('.zip')) {
                 const zip = await JSZip.loadAsync(file);
-                // Get ALL CSV and XML files
                 const validFiles = Object.values(zip.files).filter(f => !f.dir && (f.name.endsWith('.csv') || f.name.endsWith('.xml')));
                 
                 if (validFiles.length === 0) throw new Error("No CSV/XML found in ZIP");
-
-                const promises = validFiles.map(async f => {
+                const sortedFiles = validFiles.sort((a, b) => a.name.localeCompare(b.name));
+                for (const f of sortedFiles) {
                     const text = await f.async("string");
-                    if (f.name.endsWith('.xml')) parseIntervalXML(text);
-                    else parseIntervalCSV(text);
-                });
-                
-                await Promise.all(promises);
+                    ingestFileContent(f.name, text);
+                }
             } else {
-                text = await file.text();
-                if (!isXml && text.trim().startsWith("<?xml")) isXml = true;
-                if (isXml) parseIntervalXML(text);
-                else parseIntervalCSV(text);
+                const text = await file.text();
+                ingestFileContent(file.name, text);
             }
             
             processGlobalIntervals();
@@ -1362,14 +1654,14 @@
     }
 
     function parseIntervalCSV(csv) {
-        parseIntervalCSVEntries(csv).forEach(([ts, kwh]) => globalIntervals.set(ts, kwh));
+        applyAggregateEntries(parseIntervalCSVEntries(csv));
     }
 
-    function parseIntervalXML(xml) {
+    function parseIntervalXMLEntries(xml) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(xml, "text/xml");
         const readings = Array.from(doc.getElementsByTagName("IntervalReading"));
-        if (!readings.length) return;
+        if (!readings.length) return [];
         
         const temp = [];
         readings.forEach(r => {
@@ -1385,7 +1677,11 @@
         const avg = nonZeros.length ? nonZeros.reduce((a,b) => a+b.val, 0) / nonZeros.length : 0;
         const multiplier = avg > 10 ? 0.001 : 1; 
 
-        temp.forEach(i => globalIntervals.set(i.ts, i.val * multiplier));
+        return temp.map(i => [i.ts, i.val * multiplier]);
+    }
+
+    function parseIntervalXML(xml) {
+        applyAggregateEntries(parseIntervalXMLEntries(xml));
     }
 
     // --- Global Helpers ---
@@ -1408,6 +1704,15 @@
     window.clearData = function() {
         parsedMonthlyData = {};
         globalIntervals.clear();
+        emporiaCircuitIntervals = {};
+        emporiaCircuitMeta = {};
+        uploadSummaryState = {
+            greenButtonFiles: 0,
+            emporiaFiles: 0,
+            emporiaCircuits: new Set(),
+            minTs: null,
+            maxTs: null
+        };
         monthManualData = {};
         monthSourcePref = {};
         uploadUpdatedAt = {};
@@ -1424,6 +1729,7 @@
         const ds = document.getElementById('dropStatus');
         ds.textContent = "Drop \"Export usage\" files here to accumulate history";
         ds.className = "text-[10px] text-gray-400";
+        renderUploadSummary();
         history.replaceState(null, '', window.location.pathname);
     };
 
@@ -1471,11 +1777,14 @@
     // --- Window Assignments ---
     // clearData and reset are aliases; toggleDetails/toggleHelp are already set above.
     window.reset = function() { window.clearData(); };
+    window.getPeakWindows = computeMonthlyPeakWindows;
+    window.getEmporiaCircuitContributions = estimateCircuitContributionForPeakWindows;
 
     window.onload = () => {
         initDropdown();
         loadFromUrl();
         loadMonthForFocused(state.billMonth);
+        renderUploadSummary();
         renderHistoryChart();
         render();
     };

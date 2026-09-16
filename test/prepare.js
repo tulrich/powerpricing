@@ -15,7 +15,7 @@ try {
         // We will mock these in the test environment, but just in case
         
         // Append exports for testing
-        jsContent += '\nexport { calculate, CONST, SEASON_WEIGHTS, fitSeasonalModel, parseIntervalCSVEntries, computeMonthlyUsage, MONTH_NAMES, getUsageForYear, parsedMonthlyData };';
+        jsContent += '\nexport { calculate, CONST, SEASON_WEIGHTS, fitSeasonalModel, parseIntervalCSVEntries, computeMonthlyUsage, MONTH_NAMES, getUsageForYear, parsedMonthlyData, detectUploadFormat, parseEmporiaCSVEntries, emporiaCircuitMeta };';
 
         fs.mkdirSync(path.dirname(outputJsPath), { recursive: true });
         fs.writeFileSync(outputJsPath, jsContent);
