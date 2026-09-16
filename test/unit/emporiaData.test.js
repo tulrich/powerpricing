@@ -8,11 +8,13 @@ import { detectUploadFormat, parseEmporiaCSVEntries, parseIntervalCSVEntries } f
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EMPORIA_WITH_GRID_PATH = path.join(__dirname, '../fixtures/emporia_hourly_with_import_export.csv');
 const EMPORIA_DATE_TIME_PATH = path.join(__dirname, '../fixtures/emporia_hourly_date_time.csv');
+const EMPORIA_REAL_WORLD_PATH = path.join(__dirname, '../fixtures/E6B3F4-426_4th_St-1H.csv');
 const GREEN_BUTTON_PATH = path.join(__dirname, '../fixtures/interval_data_2026-01-01_to_2026-07-20.csv');
 
 describe('Emporia Upload Support', () => {
     const emporiaGridCsv = fs.readFileSync(EMPORIA_WITH_GRID_PATH, 'utf8');
     const emporiaDateTimeCsv = fs.readFileSync(EMPORIA_DATE_TIME_PATH, 'utf8');
+    const emporiaRealWorldCsv = fs.readFileSync(EMPORIA_REAL_WORLD_PATH, 'utf8');
     const greenButtonCsv = fs.readFileSync(GREEN_BUTTON_PATH, 'utf8');
 
     it('should detect Green Button and Emporia CSV formats correctly', () => {
@@ -73,5 +75,21 @@ describe('Emporia Upload Support', () => {
             expect(Number.isFinite(ts)).toBe(true);
             expect(Number.isFinite(kwh)).toBe(true);
         });
+    });
+
+    it('should parse uploaded real-world Emporia time-bucket fixture', () => {
+        expect(detectUploadFormat(emporiaRealWorldCsv, 'E6B3F4-426_4th_St-1H.csv')).toBe('emporia_csv');
+        const parsed = parseEmporiaCSVEntries(emporiaRealWorldCsv);
+        expect(parsed).toBeTruthy();
+        expect(parsed.aggregateEntries.length).toBe(5136);
+        expect(Object.keys(parsed.circuitSeries).length).toBeGreaterThan(5);
+        expect(parsed.circuitMeta['426 4th St-Solar/Generation-27 - 40A solar (kWhs)']?.kind).toBe('generation');
+
+        const first = parsed.aggregateEntries[0];
+        const last = parsed.aggregateEntries[parsed.aggregateEntries.length - 1];
+        expect(first[0]).toBe(new Date('03/01/2023 00:00:00').getTime());
+        expect(last[0]).toBe(new Date('10/01/2023 00:00:00').getTime());
+        expect(Number.isFinite(first[1])).toBe(true);
+        expect(Number.isFinite(last[1])).toBe(true);
     });
 });

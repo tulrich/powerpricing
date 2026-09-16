@@ -1362,7 +1362,7 @@
                 (header.some((h) => h.includes('type')) && header.some((h) => h.includes('date')));
             if (hasGreenButtonHeader) return 'green_button_csv';
 
-            const hasTime = header.some((h) => /(timestamp|date\/time|datetime|date time)/.test(h)) ||
+            const hasTime = header.some((h) => /(timestamp|date\/time|datetime|date time|time bucket)/.test(h)) ||
                 (header.some((h) => /\bdate\b/.test(h)) && header.some((h) => /\btime\b/.test(h)));
             if (hasTime) sawEmporiaCandidate = true;
         }
@@ -1382,7 +1382,7 @@
             const header = line
                 .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
                 .map((s) => s.trim().replace(/"/g, '').toLowerCase());
-            const hasTimestamp = header.some((h) => /(timestamp|date\/time|datetime|date time)/.test(h));
+            const hasTimestamp = header.some((h) => /(timestamp|date\/time|datetime|date time|time bucket)/.test(h));
             const hasDateTime = header.some((h) => /\bdate\b/.test(h)) && header.some((h) => /\btime\b/.test(h));
             return hasTimestamp || hasDateTime;
         });
@@ -1392,7 +1392,7 @@
             .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
             .map((s) => s.trim().replace(/"/g, ''));
         const normalizedHeaders = headers.map((h) => h.toLowerCase());
-        const timestampIdx = normalizedHeaders.findIndex((h) => /(timestamp|date\/time|datetime|date time)/.test(h));
+        const timestampIdx = normalizedHeaders.findIndex((h) => /(timestamp|date\/time|datetime|date time|time bucket)/.test(h));
         const dateIdx = normalizedHeaders.findIndex((h) => /\bdate\b/.test(h) && !/\bupdate\b/.test(h));
         const timeIdx = normalizedHeaders.findIndex((h) => /\btime\b/.test(h) && !/\btimezone\b/.test(h) && !/\btimestamp\b/.test(h));
         if (timestampIdx === -1 && (dateIdx === -1 || timeIdx === -1)) return null;
