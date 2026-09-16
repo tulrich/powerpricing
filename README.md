@@ -39,3 +39,18 @@ This project uses `vitest` for unit testing. The tests run against the logic emb
    - `index.html`: Contains the source of truth for logic.
    - `test/prepare.js`: Extracts the `<script>` content from `index.html`.
    - `test/unit/calculations.test.js`: Unit tests for the billing logic.
+
+## Upload Formats
+
+- Green Button CSV (`Export usage`) and Green Button XML interval files.
+- ZIP uploads containing multiple Green Button CSV/XML files.
+- Emporia Vue CSV hourly exports, including per-circuit columns.
+
+### Emporia Notes
+
+- Billing calculations still use one aggregate net interval stream.
+- If Emporia `Net` is present, it is used directly for aggregate billing input.
+- If Emporia `Grid Import` and `Grid Export` are present, aggregate net is `import - export`.
+- Otherwise, aggregate is derived from circuit columns, treating solar/generation columns as negative contribution.
+- Per-circuit Emporia traces are retained in-memory for advanced analyses (peak contributors, future battery+solar coverage analysis).
+- All parsing and analysis remain local in the browser; no upload data is sent to any server.
